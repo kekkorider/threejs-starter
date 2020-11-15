@@ -5,6 +5,9 @@ import { BoxBufferGeometry } from 'three/src/geometries/BoxBufferGeometry'
 import { MeshStandardMaterial } from 'three/src/materials/MeshStandardMaterial'
 import { Mesh } from 'three/src/objects/Mesh'
 import { PointLight } from 'three/src/lights/PointLight'
+import { Color } from 'three/src/math/Color'
+
+import Tweakpane from 'tweakpane'
 
 class App {
   constructor(container) {
@@ -20,6 +23,8 @@ class App {
     this._createBox()
     this._createLight()
     this._addListeners()
+
+    this._createDebugPanel()
 
     this.renderer.setAnimationLoop(() => {
       this._update()
@@ -38,7 +43,6 @@ class App {
   }
 
   _render() {
-    this.renderer.setClearColor(0x121212)
     this.renderer.render(this.scene, this.camera)
   }
 
@@ -61,21 +65,82 @@ class App {
 
     this.renderer.setSize(this.container.clientWidth, this.container.clientHeight)
     this.renderer.setPixelRatio(window.devicePixelRatio)
+    this.renderer.setClearColor(0x121212)
     this.renderer.gammaOutput = true
     this.renderer.physicallyCorrectLights = true
   }
 
   _createLight() {
-    this.pointLight = new PointLight(0xff0055, 100, 100, 2)
+    this.pointLight = new PointLight(0xff0055, 500, 100, 2)
     this.pointLight.position.set(8, 10, 13)
     this.scene.add(this.pointLight)
   }
 
   _createBox() {
-    const geometry = new BoxBufferGeometry(5, 5, 5, 1, 1, 1)
-    const material = new MeshStandardMaterial({ color: 0xffff00 })
+    const geometry = new BoxBufferGeometry(1, 1, 1, 1, 1, 1)
+
+    const material = new MeshStandardMaterial({ color: 0xffffff })
+
     this.box = new Mesh(geometry, material)
+    this.box.scale.x = 5
+    this.box.scale.y = 5
+    this.box.scale.z = 5
     this.scene.add(this.box)
+  }
+
+  _createDebugPanel() {
+    this.pane = new Tweakpane()
+
+    /**
+     * Scene configuration
+     */
+    const sceneFolder = this.pane.addFolder({ title: 'Scene' })
+
+    let params = { background: { r: 18, g: 18, b: 18 } }
+
+    sceneFolder.addInput(params, 'background', { label: 'Background Color' }).on('change', value => {
+      this.renderer.setClearColor(new Color(`rgb(${parseInt(value.r)}, ${parseInt(value.g)}, ${parseInt(value.b)})`))
+    })
+
+    /**
+     * Box configuration
+     */
+    const boxFolder = this.pane.addFolder({ title: 'Box' })
+
+    params = { width: 5, height: 5, depth: 5, metalness: 0.5, roughness: 0.5 }
+
+    boxFolder.addInput(params, 'width', { label: 'Width', min: 1, max: 8 })
+      .on('change', value => this.box.scale.x = value)
+
+    boxFolder.addInput(params, 'height', { label: 'Height', min: 1, max: 8 })
+      .on('change', value => this.box.scale.y = value)
+
+    boxFolder.addInput(params, 'depth', { label: 'Depth', min: 1, max: 8 })
+      .on('change', value => this.box.scale.z = value)
+
+    boxFolder.addInput(params, 'metalness', { label: 'Metallic', min: 0, max: 1 })
+      .on('change', value => this.box.material.metalness = value)
+
+    boxFolder.addInput(params, 'roughness', { label: 'Roughness', min: 0, max: 1 })
+      .on('change', value => this.box.material.roughness = value)
+
+    /**
+     * Light configuration
+     */
+    const lightFolder = this.pane.addFolder({ title: 'Light' })
+
+    params = {
+      color: { r: 255, g: 0, b: 85 },
+      intensity: 500
+    }
+
+    lightFolder.addInput(params, 'color', { label: 'Color' }).on('change', value => {
+      this.pointLight.color = new Color(`rgb(${parseInt(value.r)}, ${parseInt(value.g)}, ${parseInt(value.b)})`)
+    })
+
+    lightFolder.addInput(params, 'intensity', { label: 'Intensity', min: 0, max: 1000 }).on('change', value => {
+      this.pointLight.intensity = value
+    })
   }
 
   _addListeners() {
