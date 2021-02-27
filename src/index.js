@@ -1,12 +1,17 @@
-import { Scene } from 'three/src/scenes/Scene'
-import { WebGLRenderer } from 'three/src/renderers/WebGLRenderer'
-import { PerspectiveCamera } from 'three/src/cameras/PerspectiveCamera'
-import { BoxBufferGeometry } from 'three/src/geometries/BoxBufferGeometry'
-import { MeshStandardMaterial } from 'three/src/materials/MeshStandardMaterial'
-import { ShaderMaterial } from 'three/src/materials/ShaderMaterial'
-import { Mesh } from 'three/src/objects/Mesh'
-import { PointLight } from 'three/src/lights/PointLight'
-import { Color } from 'three/src/math/Color'
+
+import {
+  Scene,
+  WebGLRenderer,
+  PerspectiveCamera,
+  BoxGeometry,
+  MeshStandardMaterial,
+  ShaderMaterial,
+  Mesh,
+  PointLight,
+  Color,
+  Clock
+} from 'three'
+
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls'
 
 // Remove this if you don't need to load any 3D model
@@ -29,6 +34,7 @@ class App {
     this._createBox()
     this._createShadedBox()
     this._createLight()
+    this._createClock()
     this._addListeners()
     this._createControls()
     this._createDebugPanel()
@@ -38,6 +44,8 @@ class App {
         this._update()
         this._render()
       })
+
+      console.log(this)
     })
   }
 
@@ -47,11 +55,13 @@ class App {
   }
 
   _update() {
-    this.box.rotation.y += 0.01
-    this.box.rotation.z += 0.006
+    const elapsed = this.clock.getElapsedTime()
 
-    this.shadedBox.rotation.y += 0.01
-    this.shadedBox.rotation.z += 0.006
+    this.box.rotation.y = elapsed
+    this.box.rotation.z = elapsed*0.6
+
+    this.shadedBox.rotation.y = elapsed
+    this.shadedBox.rotation.z = elapsed*0.6
   }
 
   _render() {
@@ -78,7 +88,6 @@ class App {
     this.renderer.setSize(this.container.clientWidth, this.container.clientHeight)
     this.renderer.setPixelRatio(Math.min(1.5, window.devicePixelRatio))
     this.renderer.setClearColor(0x121212)
-    this.renderer.gammaOutput = true
     this.renderer.physicallyCorrectLights = true
   }
 
@@ -92,9 +101,13 @@ class App {
    * Create a box with a PBR material
    */
   _createBox() {
-    const geometry = new BoxBufferGeometry(1, 1, 1, 1, 1, 1)
+    const geometry = new BoxGeometry(1, 1, 1, 1, 1, 1)
 
-    const material = new MeshStandardMaterial({ color: 0xffffff })
+    const material = new MeshStandardMaterial({
+      color: 0xffffff,
+      metalness: 0.7,
+      roughness: 0.35
+    })
 
     this.box = new Mesh(geometry, material)
 
@@ -111,7 +124,7 @@ class App {
    * Create a box with a custom ShaderMaterial
    */
   _createShadedBox() {
-    const geometry = new BoxBufferGeometry(1, 1, 1, 1, 1, 1)
+    const geometry = new BoxGeometry(1, 1, 1, 1, 1, 1)
 
     const material = new ShaderMaterial({
       vertexShader: require('./shaders/sample.vertex.glsl'),
@@ -181,8 +194,8 @@ class App {
 
     let params = { background: { r: 18, g: 18, b: 18 } }
 
-    sceneFolder.addInput(params, 'background', { label: 'Background Color' }).on('change', value => {
-      this.renderer.setClearColor(new Color(`rgb(${parseInt(value.r)}, ${parseInt(value.g)}, ${parseInt(value.b)})`))
+    sceneFolder.addInput(params, 'background', { label: 'Background Color' }).on('change', e => {
+      this.renderer.setClearColor(new Color(e.value.r / 255, e.value.g / 255, e.value.b / 255))
     })
 
     /**
@@ -190,31 +203,18 @@ class App {
      */
     const boxFolder = this.pane.addFolder({ title: 'Box' })
 
-    params = { width: 4, height: 4, depth: 4, metalness: 0.5, roughness: 0.5 }
+    boxFolder.addInput(this.box.scale, 'x', { label: 'Width', min: 1, max: 8 })
+      .on('change', e => this.shadedBox.scale.x = e.value)
 
-    boxFolder.addInput(params, 'width', { label: 'Width', min: 1, max: 8 })
-      .on('change', value => {
-        this.box.scale.x = value
-        this.shadedBox.scale.x = value
-      })
+    boxFolder.addInput(this.box.scale, 'y', { label: 'Height', min: 1, max: 8 })
+      .on('change', e => this.shadedBox.scale.y = e.value)
 
-    boxFolder.addInput(params, 'height', { label: 'Height', min: 1, max: 8 })
-      .on('change', value => {
-        this.box.scale.y = value
-        this.shadedBox.scale.y = value
-      })
+    boxFolder.addInput(this.box.scale, 'z', { label: 'Depth', min: 1, max: 8 })
+      .on('change', e => this.shadedBox.scale.z = e.value)
 
-    boxFolder.addInput(params, 'depth', { label: 'Depth', min: 1, max: 8 })
-      .on('change', value => {
-        this.box.scale.z = value
-        this.shadedBox.scale.z = value
-      })
+    boxFolder.addInput(this.box.material, 'metalness', { label: 'Metallic', min: 0, max: 1 })
 
-    boxFolder.addInput(params, 'metalness', { label: 'Metallic', min: 0, max: 1 })
-      .on('change', value => this.box.material.metalness = value)
-
-    boxFolder.addInput(params, 'roughness', { label: 'Roughness', min: 0, max: 1 })
-      .on('change', value => this.box.material.roughness = value)
+    boxFolder.addInput(this.box.material, 'roughness', { label: 'Roughness', min: 0, max: 1 })
 
     /**
      * Light configuration
@@ -222,17 +222,18 @@ class App {
     const lightFolder = this.pane.addFolder({ title: 'Light' })
 
     params = {
-      color: { r: 255, g: 0, b: 85 },
-      intensity: 500
+      color: { r: 255, g: 0, b: 85 }
     }
 
-    lightFolder.addInput(params, 'color', { label: 'Color' }).on('change', value => {
-      this.pointLight.color = new Color(`rgb(${parseInt(value.r)}, ${parseInt(value.g)}, ${parseInt(value.b)})`)
+    lightFolder.addInput(params, 'color', { label: 'Color' }).on('change', e => {
+      this.pointLight.color = new Color(e.value.r / 255, e.value.g / 255, e.value.b / 255)
     })
 
-    lightFolder.addInput(params, 'intensity', { label: 'Intensity', min: 0, max: 1000 }).on('change', value => {
-      this.pointLight.intensity = value
-    })
+    lightFolder.addInput(this.pointLight, 'intensity', { label: 'Intensity', min: 0, max: 1000 })
+  }
+
+  _createClock() {
+    this.clock = new Clock()
   }
 
   _addListeners() {
