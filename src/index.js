@@ -18,7 +18,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader'
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader'
 
-import Tweakpane from 'tweakpane'
+import { Pane } from 'tweakpane'
 
 class App {
   constructor(container) {
@@ -185,7 +185,7 @@ class App {
   }
 
   _createDebugPanel() {
-    this.pane = new Tweakpane()
+    this.pane = new Pane()
 
     /**
      * Scene configuration
