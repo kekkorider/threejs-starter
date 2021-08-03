@@ -4742,10 +4742,10 @@ safe-regex@^1.1.0:
   resolved "https://registry.yarnpkg.com/safer-buffer/-/safer-buffer-2.1.2.tgz#44fa161b0187b9549dd84bb91802f9bd8385cd6a"
   integrity sha512-YZo3K82SD7Riyi0E1EQPojLz7kpepnSQI9IyPbHHg1XXXevb5dJI7tpyN2ADxGcQbHG7vcyRHk0cbwqcQriUtg==
 
-sass@^1.35.1:
-  version "1.35.1"
-  resolved "https://registry.yarnpkg.com/sass/-/sass-1.35.1.tgz#90ecf774dfe68f07b6193077e3b42fb154b9e1cd"
-  integrity sha512-oCisuQJstxMcacOPmxLNiLlj4cUyN2+8xJnG7VanRoh2GOLr9RqkvI4AxA4a6LHVg/rsu+PmxXeGhrdSF9jCiQ==
+sass@^1.37.2:
+  version "1.37.2"
+  resolved "https://registry.yarnpkg.com/sass/-/sass-1.37.2.tgz#eb87c01a1e6ec12e50fa69571b69628ea043a372"
+  integrity sha512-+XMg8QOg7OGLo4F5R3fLYEti/3MxFkyX0NxYbqWycU8xYMAhPDN5FuCO2ZJudnM1wcnZ3CeJRnpqUBZpLOitCQ==
   dependencies:
     chokidar ">=3.0.0 <4.0.0"
 
@@ -5163,10 +5163,10 @@ terser@^5.6.1:
     source-map "~0.7.2"
     source-map-support "~0.5.19"
 
-three@^0.129.0:
-  version "0.129.0"
-  resolved "https://registry.yarnpkg.com/three/-/three-0.129.0.tgz#f5e530bbc96eac5d5b4749cb5da886ef0d42f554"
-  integrity sha512-wiWio1yVRg2Oj6WEWsTHQo5eSzYpEwSBtPSi3OofNpvFbf26HFfb9kw4FZJNjII4qxzp0b1xLB11+tKkBGB1ZA==
+three@^0.131.2:
+  version "0.131.2"
+  resolved "https://registry.yarnpkg.com/three/-/three-0.131.2.tgz#95c1c805594bf5bf4d5027b25b2bc07ae20baa81"
+  integrity sha512-1Wmd0xYihEVpU9HjQ3POqnTlx6VZHmmbmtNgAWY/EVwOvkdXpSE6yFVwIvTkEubCd5LzK14pCHwb36SXoAxi3A==
 
 through2@^0.6.3:
   version "0.6.5"
@@ -5280,10 +5280,10 @@ tunnel-agent@^0.6.0:
   dependencies:
     safe-buffer "^5.0.1"
 
-tweakpane@^3.0.2:
-  version "3.0.2"
-  resolved "https://registry.yarnpkg.com/tweakpane/-/tweakpane-3.0.2.tgz#d6234ab3ed4ba4d29ac139ef8d527585bc2b5cb1"
-  integrity sha512-SCiK3S466ElC8Uws0BgO69I5rcpY+0JgPzxpwn0nn7yGHeqEjCHsu7Qvd/L7wJPUaUY13PIEniJeV99ff8oy6Q==
+tweakpane@^3.0.4:
+  version "3.0.4"
+  resolved "https://registry.yarnpkg.com/tweakpane/-/tweakpane-3.0.4.tgz#9f40ae9b38a049c7d2782f73d4261f7363cedc8b"
+  integrity sha512-rnx+vzTw1tAjUXkIFubYUIwJEmOASFAlIP0De6tqWa2+IptmxdyvXWQG5/Vsph1T5YkFcMJ3VnV56wZirjPyFA==
 
 tweetnacl@^0.14.3, tweetnacl@~0.14.0:
   version "0.14.5"
