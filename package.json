@@ -1,6 +1,6 @@
 {
   "name": "threejs-starter",
-  "version": "1.2.4",
+  "version": "1.2.5",
   "main": "src/index.js",
   "author": "Francesco Michelini <hello@francescomichelini.com>",
   "license": "MIT",
@@ -14,10 +14,10 @@
     "glslify-deps": "^1.3.2",
     "parcel-bundler": "^1.12.5",
     "parcel-plugin-static-files-copy": "^2.6.0",
-    "sass": "^1.43.4"
+    "sass": "^1.49.0"
   },
   "dependencies": {
-    "three": "^0.134.0",
-    "tweakpane": "^3.0.5"
+    "three": "^0.136.0",
+    "tweakpane": "^3.0.7"
   }
 }
