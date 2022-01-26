@@ -204,8 +204,6 @@ class App {
      */
     const sceneFolder = this.pane.addFolder({ title: 'Scene' })
 
-    sceneFolder.addButton({ title: 'Destroy' }).on('click', () => this.destroy())
-
     let params = { background: { r: 18, g: 18, b: 18 } }
 
     sceneFolder.addInput(params, 'background', { label: 'Background Color' }).on('change', e => {
