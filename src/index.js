@@ -21,30 +21,30 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader'
 import { Pane } from 'tweakpane'
 
 class App {
+  #resizeCallback = () => this.#onResize()
+
   constructor(container) {
     this.container = document.querySelector(container)
-
-    this._resizeCb = () => this._onResize()
   }
 
   async init() {
-    this._createScene()
-    this._createCamera()
-    this._createRenderer()
-    this._createBox()
-    this._createShadedBox()
-    this._createLight()
-    this._createClock()
-    this._addListeners()
-    this._createControls()
-    this._createDebugPanel()
-    this._createLoaders()
+    this.#createScene()
+    this.#createCamera()
+    this.#createRenderer()
+    this.#createBox()
+    this.#createShadedBox()
+    this.#createLight()
+    this.#createClock()
+    this.#addListeners()
+    this.#createControls()
+    this.#createDebugPanel()
+    this.#createLoaders()
 
-    await this._loadModel()
+    await this.#loadModel()
 
     this.renderer.setAnimationLoop(() => {
-      this._update()
-      this._render()
+      this.#update()
+      this.#render()
     })
 
     console.log(this)
@@ -52,10 +52,10 @@ class App {
 
   destroy() {
     this.renderer.dispose()
-    this._removeListeners()
+    this.#removeListeners()
   }
 
-  _update() {
+  #update() {
     const elapsed = this.clock.getElapsedTime()
 
     this.box.rotation.y = elapsed
@@ -65,20 +65,20 @@ class App {
     this.shadedBox.rotation.z = elapsed*0.6
   }
 
-  _render() {
+  #render() {
     this.renderer.render(this.scene, this.camera)
   }
 
-  _createScene() {
+  #createScene() {
     this.scene = new Scene()
   }
 
-  _createCamera() {
+  #createCamera() {
     this.camera = new PerspectiveCamera(75, this.container.clientWidth / this.container.clientHeight, 0.1, 100)
     this.camera.position.set(-4, 4, 10)
   }
 
-  _createRenderer() {
+  #createRenderer() {
     this.renderer = new WebGLRenderer({
       alpha: true,
       antialias: window.devicePixelRatio === 1
@@ -92,7 +92,7 @@ class App {
     this.renderer.physicallyCorrectLights = true
   }
 
-  _createLight() {
+  #createLight() {
     this.pointLight = new PointLight(0xff0055, 500, 100, 2)
     this.pointLight.position.set(0, 10, 13)
     this.scene.add(this.pointLight)
@@ -101,7 +101,7 @@ class App {
   /**
    * Create a box with a PBR material
    */
-  _createBox() {
+  #createBox() {
     const geometry = new BoxGeometry(1, 1, 1, 1, 1, 1)
 
     const material = new MeshStandardMaterial({
@@ -124,7 +124,7 @@ class App {
   /**
    * Create a box with a custom ShaderMaterial
    */
-  _createShadedBox() {
+  #createShadedBox() {
     const geometry = new BoxGeometry(1, 1, 1, 1, 1, 1)
 
     const material = new ShaderMaterial({
@@ -144,7 +144,7 @@ class App {
     this.scene.add(this.shadedBox)
   }
 
-  _createLoaders() {
+  #createLoaders() {
     this.loadingManager = new LoadingManager()
 
     this.loadingManager.onProgress = (url, loaded, total) => {
@@ -163,7 +163,7 @@ class App {
   /**
    * Load a 3D model and append it to the scene
    */
-  _loadModel() {
+  #loadModel() {
     return new Promise(resolve => {
       this.gltfLoader.load('./model.glb', gltf => {
         const mesh = gltf.scene.children[0]
@@ -190,11 +190,11 @@ class App {
     })
   }
 
-  _createControls() {
+  #createControls() {
     this.controls = new OrbitControls(this.camera, this.renderer.domElement)
   }
 
-  _createDebugPanel() {
+  #createDebugPanel() {
     this.pane = new Pane({
       container: document.querySelector('#debug')
     })
@@ -203,6 +203,8 @@ class App {
      * Scene configuration
      */
     const sceneFolder = this.pane.addFolder({ title: 'Scene' })
+
+    sceneFolder.addButton({ title: 'Destroy' }).on('click', () => this.destroy())
 
     let params = { background: { r: 18, g: 18, b: 18 } }
 
@@ -244,19 +246,19 @@ class App {
     lightFolder.addInput(this.pointLight, 'intensity', { label: 'Intensity', min: 0, max: 1000 })
   }
 
-  _createClock() {
+  #createClock() {
     this.clock = new Clock()
   }
 
-  _addListeners() {
-    window.addEventListener('resize', this._resizeCb, { passive: true })
+  #addListeners() {
+    window.addEventListener('resize', this.#resizeCallback, { passive: true })
   }
 
-  _removeListeners() {
-    window.removeEventListener('resize', this._resizeCb, { passive: true })
+  #removeListeners() {
+    window.removeEventListener('resize', this.#resizeCallback, { passive: true })
   }
 
-  _onResize() {
+  #onResize() {
     this.camera.aspect = this.container.clientWidth / this.container.clientHeight
     this.camera.updateProjectionMatrix()
     this.renderer.setSize(this.container.clientWidth, this.container.clientHeight)
