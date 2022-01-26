@@ -9,52 +9,53 @@ import {
   Mesh,
   PointLight,
   Color,
-  Clock
+  Clock,
+  LoadingManager
 } from 'three'
 
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls'
 
 // Remove this if you don't need to load any 3D model
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader'
-import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader'
 
 import { Pane } from 'tweakpane'
 
 class App {
+  #resizeCallback = () => this.#onResize()
+
   constructor(container) {
     this.container = document.querySelector(container)
-
-    this._resizeCb = () => this._onResize()
   }
 
-  init() {
-    this._createScene()
-    this._createCamera()
-    this._createRenderer()
-    this._createBox()
-    this._createShadedBox()
-    this._createLight()
-    this._createClock()
-    this._addListeners()
-    this._createControls()
-    this._createDebugPanel()
+  async init() {
+    this.#createScene()
+    this.#createCamera()
+    this.#createRenderer()
+    this.#createBox()
+    this.#createShadedBox()
+    this.#createLight()
+    this.#createClock()
+    this.#addListeners()
+    this.#createControls()
+    this.#createDebugPanel()
+    this.#createLoaders()
 
-    this._loadModel().then(() => {
-      this.renderer.setAnimationLoop(() => {
-        this._update()
-        this._render()
-      })
+    await this.#loadModel()
 
-      console.log(this)
+    this.renderer.setAnimationLoop(() => {
+      this.#update()
+      this.#render()
     })
+
+    console.log(this)
   }
 
   destroy() {
     this.renderer.dispose()
-    this._removeListeners()
+    this.#removeListeners()
   }
 
-  _update() {
+  #update() {
     const elapsed = this.clock.getElapsedTime()
 
     this.box.rotation.y = elapsed
@@ -64,23 +65,23 @@ class App {
     this.shadedBox.rotation.z = elapsed*0.6
   }
 
-  _render() {
+  #render() {
     this.renderer.render(this.scene, this.camera)
   }
 
-  _createScene() {
+  #createScene() {
     this.scene = new Scene()
   }
 
-  _createCamera() {
+  #createCamera() {
     this.camera = new PerspectiveCamera(75, this.container.clientWidth / this.container.clientHeight, 0.1, 100)
     this.camera.position.set(-4, 4, 10)
   }
 
-  _createRenderer() {
+  #createRenderer() {
     this.renderer = new WebGLRenderer({
       alpha: true,
-      antialias: true
+      antialias: window.devicePixelRatio === 1
     })
 
     this.container.appendChild(this.renderer.domElement)
@@ -91,7 +92,7 @@ class App {
     this.renderer.physicallyCorrectLights = true
   }
 
-  _createLight() {
+  #createLight() {
     this.pointLight = new PointLight(0xff0055, 500, 100, 2)
     this.pointLight.position.set(0, 10, 13)
     this.scene.add(this.pointLight)
@@ -100,7 +101,7 @@ class App {
   /**
    * Create a box with a PBR material
    */
-  _createBox() {
+  #createBox() {
     const geometry = new BoxGeometry(1, 1, 1, 1, 1, 1)
 
     const material = new MeshStandardMaterial({
@@ -123,7 +124,7 @@ class App {
   /**
    * Create a box with a custom ShaderMaterial
    */
-  _createShadedBox() {
+  #createShadedBox() {
     const geometry = new BoxGeometry(1, 1, 1, 1, 1, 1)
 
     const material = new ShaderMaterial({
@@ -143,19 +144,28 @@ class App {
     this.scene.add(this.shadedBox)
   }
 
+  #createLoaders() {
+    this.loadingManager = new LoadingManager()
+
+    this.loadingManager.onProgress = (url, loaded, total) => {
+      // In case the progress count is not correct, see this:
+      // https://discourse.threejs.org/t/gltf-file-loaded-twice-when-loading-is-initiated-in-loadingmanager-inside-onprogress-callback/27799/2
+      console.log(`Loaded ${loaded} resources out of ${total} -> ${url}`)
+    }
+
+    this.loadingManager.onLoad = () => {
+      console.log('All resources loaded')
+    }
+
+    this.gltfLoader = new GLTFLoader(this.loadingManager)
+  }
+
   /**
    * Load a 3D model and append it to the scene
    */
-  _loadModel() {
+  #loadModel() {
     return new Promise(resolve => {
-      this.loader = new GLTFLoader()
-
-      const dracoLoader = new DRACOLoader()
-      dracoLoader.setDecoderPath('/')
-
-      this.loader.setDRACOLoader(dracoLoader)
-
-      this.loader.load('./model.glb', gltf => {
+      this.gltfLoader.load('./model.glb', gltf => {
         const mesh = gltf.scene.children[0]
 
         mesh.scale.x = 4
@@ -180,17 +190,21 @@ class App {
     })
   }
 
-  _createControls() {
+  #createControls() {
     this.controls = new OrbitControls(this.camera, this.renderer.domElement)
   }
 
-  _createDebugPanel() {
-    this.pane = new Pane()
+  #createDebugPanel() {
+    this.pane = new Pane({
+      container: document.querySelector('#debug')
+    })
 
     /**
      * Scene configuration
      */
     const sceneFolder = this.pane.addFolder({ title: 'Scene' })
+
+    sceneFolder.addButton({ title: 'Destroy' }).on('click', () => this.destroy())
 
     let params = { background: { r: 18, g: 18, b: 18 } }
 
@@ -232,19 +246,19 @@ class App {
     lightFolder.addInput(this.pointLight, 'intensity', { label: 'Intensity', min: 0, max: 1000 })
   }
 
-  _createClock() {
+  #createClock() {
     this.clock = new Clock()
   }
 
-  _addListeners() {
-    window.addEventListener('resize', this._resizeCb, { passive: true })
+  #addListeners() {
+    window.addEventListener('resize', this.#resizeCallback, { passive: true })
   }
 
-  _removeListeners() {
-    window.removeEventListener('resize', this._resizeCb, { passive: true })
+  #removeListeners() {
+    window.removeEventListener('resize', this.#resizeCallback, { passive: true })
   }
 
-  _onResize() {
+  #onResize() {
     this.camera.aspect = this.container.clientWidth / this.container.clientHeight
     this.camera.updateProjectionMatrix()
     this.renderer.setSize(this.container.clientWidth, this.container.clientHeight)
