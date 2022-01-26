@@ -27,7 +27,7 @@ class App {
     this._resizeCb = () => this._onResize()
   }
 
-  init() {
+  async init() {
     this._createScene()
     this._createCamera()
     this._createRenderer()
@@ -39,14 +39,14 @@ class App {
     this._createControls()
     this._createDebugPanel()
 
-    this._loadModel().then(() => {
-      this.renderer.setAnimationLoop(() => {
-        this._update()
-        this._render()
-      })
+    await this._loadModel()
 
-      console.log(this)
+    this.renderer.setAnimationLoop(() => {
+      this._update()
+      this._render()
     })
+
+    console.log(this)
   }
 
   destroy() {
