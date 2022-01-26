@@ -16,7 +16,6 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls'
 
 // Remove this if you don't need to load any 3D model
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader'
-import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader'
 
 import { Pane } from 'tweakpane'
 
@@ -149,11 +148,6 @@ class App {
   _loadModel() {
     return new Promise(resolve => {
       this.loader = new GLTFLoader()
-
-      const dracoLoader = new DRACOLoader()
-      dracoLoader.setDecoderPath('/')
-
-      this.loader.setDRACOLoader(dracoLoader)
 
       this.loader.load('./model.glb', gltf => {
         const mesh = gltf.scene.children[0]

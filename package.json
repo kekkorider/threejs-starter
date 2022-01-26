@@ -5,9 +5,8 @@
   "author": "Francesco Michelini <hello@francescomichelini.com>",
   "license": "MIT",
   "scripts": {
-    "copy-draco-files": "rsync node_modules/three/examples/js/libs/draco/draco_decoder.wasm node_modules/three/examples/js/libs/draco/draco_wasm_wrapper.js dist",
-    "dev": "rm -rf dist && yarn copy-draco-files && parcel ./src/index.html",
-    "build": "rm -rf dist && yarn copy-draco-files && parcel build ./src/index.html --no-source-maps"
+    "dev": "rm -rf dist && parcel ./src/index.html",
+    "build": "rm -rf dist && parcel build ./src/index.html --no-source-maps"
   },
   "devDependencies": {
     "@babel/core": "^7.16.12",
