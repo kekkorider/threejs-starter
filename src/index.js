@@ -9,7 +9,8 @@ import {
   Mesh,
   PointLight,
   Color,
-  Clock
+  Clock,
+  LoadingManager
 } from 'three'
 
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls'
@@ -37,6 +38,7 @@ class App {
     this._addListeners()
     this._createControls()
     this._createDebugPanel()
+    this._createLoaders()
 
     await this._loadModel()
 
@@ -142,14 +144,28 @@ class App {
     this.scene.add(this.shadedBox)
   }
 
+  _createLoaders() {
+    this.loadingManager = new LoadingManager()
+
+    this.loadingManager.onProgress = (url, loaded, total) => {
+      // In case the progress count is not correct, see this:
+      // https://discourse.threejs.org/t/gltf-file-loaded-twice-when-loading-is-initiated-in-loadingmanager-inside-onprogress-callback/27799/2
+      console.log(`Loaded ${loaded} resources out of ${total} -> ${url}`)
+    }
+
+    this.loadingManager.onLoad = () => {
+      console.log('All resources loaded')
+    }
+
+    this.gltfLoader = new GLTFLoader(this.loadingManager)
+  }
+
   /**
    * Load a 3D model and append it to the scene
    */
   _loadModel() {
     return new Promise(resolve => {
-      this.loader = new GLTFLoader()
-
-      this.loader.load('./model.glb', gltf => {
+      this.gltfLoader.load('./model.glb', gltf => {
         const mesh = gltf.scene.children[0]
 
         mesh.scale.x = 4
