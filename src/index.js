@@ -179,7 +179,9 @@ class App {
   }
 
   _createDebugPanel() {
-    this.pane = new Pane()
+    this.pane = new Pane({
+      container: document.querySelector('#debug')
+    })
 
     /**
      * Scene configuration
