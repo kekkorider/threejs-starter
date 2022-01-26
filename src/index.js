@@ -80,7 +80,7 @@ class App {
   _createRenderer() {
     this.renderer = new WebGLRenderer({
       alpha: true,
-      antialias: true
+      antialias: window.devicePixelRatio === 1
     })
 
     this.container.appendChild(this.renderer.domElement)
