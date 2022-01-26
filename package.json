@@ -19,7 +19,7 @@
   },
   "dependencies": {
     "@babel/runtime": "^7.16.7",
-    "three": "^0.136.0",
+    "three": "^0.137.0",
     "tweakpane": "^3.0.7"
   }
 }
