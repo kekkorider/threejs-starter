@@ -265,8 +265,6 @@ class App {
     this.camera.updateProjectionMatrix()
 
     this.renderer.setSize(this.screen.x, this.screen.y)
-
-    console.log(this.screen.x)
   }
 }
 
