@@ -10,7 +10,8 @@ import {
   PointLight,
   Color,
   Clock,
-  LoadingManager
+  LoadingManager,
+  Vector2
 } from 'three'
 
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls'
@@ -25,6 +26,7 @@ class App {
 
   constructor(container) {
     this.container = document.querySelector(container)
+    this.screen = new Vector2(this.container.clientWidth, this.container.clientHeight)
   }
 
   async init() {
@@ -74,7 +76,7 @@ class App {
   }
 
   #createCamera() {
-    this.camera = new PerspectiveCamera(75, this.container.clientWidth / this.container.clientHeight, 0.1, 100)
+    this.camera = new PerspectiveCamera(75, this.screen.x / this.screen.y, 0.1, 100)
     this.camera.position.set(-4, 4, 10)
   }
 
@@ -86,7 +88,7 @@ class App {
 
     this.container.appendChild(this.renderer.domElement)
 
-    this.renderer.setSize(this.container.clientWidth, this.container.clientHeight)
+    this.renderer.setSize(this.screen.x, this.screen.y)
     this.renderer.setPixelRatio(Math.min(1.5, window.devicePixelRatio))
     this.renderer.setClearColor(0x121212)
     this.renderer.physicallyCorrectLights = true
@@ -257,9 +259,14 @@ class App {
   }
 
   #onResize() {
-    this.camera.aspect = this.container.clientWidth / this.container.clientHeight
+    this.screen.set(this.container.clientWidth, this.container.clientHeight)
+
+    this.camera.aspect = this.screen.x / this.screen.y
     this.camera.updateProjectionMatrix()
-    this.renderer.setSize(this.container.clientWidth, this.container.clientHeight)
+
+    this.renderer.setSize(this.screen.x, this.screen.y)
+
+    console.log(this.screen.x)
   }
 }
 
