@@ -5,7 +5,6 @@ import {
   PerspectiveCamera,
   BoxGeometry,
   MeshStandardMaterial,
-  ShaderMaterial,
   Mesh,
   PointLight,
   Color,
@@ -20,6 +19,8 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader'
 
 import { Pane } from 'tweakpane'
+
+import { SampleShaderMaterial } from './materials/SampleShaderMaterial'
 
 class App {
   #resizeCallback = () => this.#onResize()
@@ -129,13 +130,7 @@ class App {
   #createShadedBox() {
     const geometry = new BoxGeometry(1, 1, 1, 1, 1, 1)
 
-    const material = new ShaderMaterial({
-      vertexShader: require('./shaders/sample.vertex.glsl'),
-      fragmentShader: require('./shaders/sample.fragment.glsl'),
-      transparent: true
-    })
-
-    this.shadedBox = new Mesh(geometry, material)
+    this.shadedBox = new Mesh(geometry, SampleShaderMaterial)
 
     this.shadedBox.scale.x = 4
     this.shadedBox.scale.y = 4
@@ -176,14 +171,8 @@ class App {
 
         mesh.position.z = 5
 
-        const material = new ShaderMaterial({
-          vertexShader: require('./shaders/sample.vertex.glsl'),
-          fragmentShader: require('./shaders/sample.fragment.glsl'),
-          transparent: true,
-          wireframe: true
-        })
-
-        mesh.material = material
+        mesh.material = SampleShaderMaterial.clone()
+        mesh.material.wireframe = true
 
         this.scene.add(mesh)
 
