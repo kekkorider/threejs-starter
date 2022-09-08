@@ -8,16 +8,13 @@ import {
   Mesh,
   PointLight,
   Clock,
-  LoadingManager,
   Vector2
 } from 'three'
 
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls'
 
-// Remove this if you don't need to load any 3D model
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader'
-
 import { SampleShaderMaterial } from './materials/SampleShaderMaterial'
+import { gltfLoader } from './loaders'
 
 class App {
   #resizeCallback = () => this.#onResize()
@@ -37,7 +34,6 @@ class App {
     this.#createClock()
     this.#addListeners()
     this.#createControls()
-    this.#createLoaders()
 
     await this.#loadModel()
 
@@ -79,7 +75,7 @@ class App {
 
   #createCamera() {
     this.camera = new PerspectiveCamera(75, this.screen.x / this.screen.y, 0.1, 100)
-    this.camera.position.set(-4, 4, 10)
+    this.camera.position.set(-0.7, 0.8, 3)
   }
 
   #createRenderer() {
@@ -115,12 +111,7 @@ class App {
     })
 
     this.box = new Mesh(geometry, material)
-
-    this.box.scale.x = 4
-    this.box.scale.y = 4
-    this.box.scale.z = 4
-
-    this.box.position.x = -5
+    this.box.position.x = -1.5
 
     this.scene.add(this.box)
   }
@@ -132,54 +123,24 @@ class App {
     const geometry = new BoxGeometry(1, 1, 1, 1, 1, 1)
 
     this.shadedBox = new Mesh(geometry, SampleShaderMaterial)
-
-    this.shadedBox.scale.x = 4
-    this.shadedBox.scale.y = 4
-    this.shadedBox.scale.z = 4
-
-    this.shadedBox.position.x = 5
+    this.shadedBox.position.x = 1.5
 
     this.scene.add(this.shadedBox)
-  }
-
-  #createLoaders() {
-    this.loadingManager = new LoadingManager()
-
-    this.loadingManager.onProgress = (url, loaded, total) => {
-      // In case the progress count is not correct, see this:
-      // https://discourse.threejs.org/t/gltf-file-loaded-twice-when-loading-is-initiated-in-loadingmanager-inside-onprogress-callback/27799/2
-      console.log(`Loaded ${loaded} resources out of ${total} -> ${url}`)
-    }
-
-    this.loadingManager.onLoad = () => {
-      console.log('All resources loaded')
-    }
-
-    this.gltfLoader = new GLTFLoader(this.loadingManager)
   }
 
   /**
    * Load a 3D model and append it to the scene
    */
-  #loadModel() {
-    return new Promise(resolve => {
-      this.gltfLoader.load('./model.glb', gltf => {
-        const mesh = gltf.scene.children[0]
+  async #loadModel() {
+    const gltf = await gltfLoader.load('/suzanne.glb')
 
-        mesh.scale.x = 4
-        mesh.scale.y = 4
-        mesh.scale.z = 4
+    const mesh = gltf.scene.children[0]
+    mesh.position.z = 1.5
 
-        mesh.position.z = 5
+    mesh.material = SampleShaderMaterial.clone()
+    mesh.material.wireframe = true
 
-        mesh.material = SampleShaderMaterial.clone()
-        mesh.material.wireframe = true
-
-        this.scene.add(mesh)
-
-        resolve()
-      })
-    })
+    this.scene.add(mesh)
   }
 
   #createControls() {
