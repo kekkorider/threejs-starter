@@ -9,7 +9,7 @@ export class TextureLoader {
    * Load a single texture or an array of textures.
    *
    * @param {String|String[]} resources Single URL or array of URLs of the texture(s) to load.
-   * @returns Texture|Textures[]
+   * @returns Texture|Texture[]
    */
   async load(resources) {
     if (Array.isArray(resources)) {

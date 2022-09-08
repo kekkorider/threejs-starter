@@ -1,5 +1,6 @@
 import { LoadingManager } from 'three'
 import { TextureLoader } from './TextureLoader'
+import { GLTFLoader } from './GLTFLoader'
 
 /**
  * Loading manager
@@ -16,3 +17,8 @@ loadingManager.onProgress = (url, loaded, total) => {
  * Texture Loader
  */
 export const textureLoader = new TextureLoader(loadingManager)
+
+/**
+ *
+ */
+export const gltfLoader = new GLTFLoader(loadingManager)

@@ -40,9 +40,9 @@ export class Debug {
 
     this.#createColorControl(mesh.material, folder)
 
-    folder.addInput(mesh.scale, 'x', { label: 'Width', min: 1, max: 8 })
-    folder.addInput(mesh.scale, 'y', { label: 'Height', min: 1, max: 8 })
-    folder.addInput(mesh.scale, 'z', { label: 'Depth', min: 1, max: 8 })
+    folder.addInput(mesh.scale, 'x', { label: 'Width', min: 0.1, max: 4 })
+    folder.addInput(mesh.scale, 'y', { label: 'Height', min: 0.1, max: 4 })
+    folder.addInput(mesh.scale, 'z', { label: 'Depth', min: 0.1, max: 4 })
 
     folder.addInput(mesh.material, 'metalness', { label: 'Metallic', min: 0, max: 1 })
     folder.addInput(mesh.material, 'roughness', { label: 'Roughness', min: 0, max: 1 })
@@ -52,9 +52,9 @@ export class Debug {
     const folder = this.pane.addFolder({ title: 'Shaded Box' })
     const mesh = this.app.shadedBox
 
-    folder.addInput(mesh.scale, 'x', { label: 'Width', min: 1, max: 8 })
-    folder.addInput(mesh.scale, 'y', { label: 'Height', min: 1, max: 8 })
-    folder.addInput(mesh.scale, 'z', { label: 'Depth', min: 1, max: 8 })
+    folder.addInput(mesh.scale, 'x', { label: 'Width', min: 0.1, max: 4 })
+    folder.addInput(mesh.scale, 'y', { label: 'Height', min: 0.1, max: 4 })
+    folder.addInput(mesh.scale, 'z', { label: 'Depth', min: 0.1, max: 4 })
   }
 
   #createLightConfig() {
