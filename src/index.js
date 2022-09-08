@@ -17,8 +17,6 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls'
 // Remove this if you don't need to load any 3D model
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader'
 
-import { Pane } from 'tweakpane'
-
 import { SampleShaderMaterial } from './materials/SampleShaderMaterial'
 
 class App {
