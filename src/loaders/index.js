@@ -19,6 +19,6 @@ loadingManager.onProgress = (url, loaded, total) => {
 export const textureLoader = new TextureLoader(loadingManager)
 
 /**
- *
+ * GLTF Models
  */
 export const gltfLoader = new GLTFLoader(loadingManager)
