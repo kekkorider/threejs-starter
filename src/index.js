@@ -7,7 +7,6 @@ import {
   MeshStandardMaterial,
   Mesh,
   PointLight,
-  Color,
   Clock,
   LoadingManager,
   Vector2
@@ -40,10 +39,14 @@ class App {
     this.#createClock()
     this.#addListeners()
     this.#createControls()
-    this.#createDebugPanel()
     this.#createLoaders()
 
     await this.#loadModel()
+
+    if (window.location.hash.includes('#debug')) {
+      const panel = await import('./Debug.js')
+      new panel.Debug(this)
+    }
 
     this.renderer.setAnimationLoop(() => {
       this.#update()
@@ -183,56 +186,6 @@ class App {
 
   #createControls() {
     this.controls = new OrbitControls(this.camera, this.renderer.domElement)
-  }
-
-  #createDebugPanel() {
-    this.pane = new Pane({
-      container: document.querySelector('#debug')
-    })
-
-    /**
-     * Scene configuration
-     */
-    const sceneFolder = this.pane.addFolder({ title: 'Scene' })
-
-    let params = { background: { r: 18, g: 18, b: 18 } }
-
-    sceneFolder.addInput(params, 'background', { label: 'Background Color' }).on('change', e => {
-      this.renderer.setClearColor(new Color(e.value.r / 255, e.value.g / 255, e.value.b / 255))
-    })
-
-    /**
-     * Box configuration
-     */
-    const boxFolder = this.pane.addFolder({ title: 'Box' })
-
-    boxFolder.addInput(this.box.scale, 'x', { label: 'Width', min: 1, max: 8 })
-      .on('change', e => this.shadedBox.scale.x = e.value)
-
-    boxFolder.addInput(this.box.scale, 'y', { label: 'Height', min: 1, max: 8 })
-      .on('change', e => this.shadedBox.scale.y = e.value)
-
-    boxFolder.addInput(this.box.scale, 'z', { label: 'Depth', min: 1, max: 8 })
-      .on('change', e => this.shadedBox.scale.z = e.value)
-
-    boxFolder.addInput(this.box.material, 'metalness', { label: 'Metallic', min: 0, max: 1 })
-
-    boxFolder.addInput(this.box.material, 'roughness', { label: 'Roughness', min: 0, max: 1 })
-
-    /**
-     * Light configuration
-     */
-    const lightFolder = this.pane.addFolder({ title: 'Light' })
-
-    params = {
-      color: { r: 255, g: 0, b: 85 }
-    }
-
-    lightFolder.addInput(params, 'color', { label: 'Color' }).on('change', e => {
-      this.pointLight.color = new Color(e.value.r / 255, e.value.g / 255, e.value.b / 255)
-    })
-
-    lightFolder.addInput(this.pointLight, 'intensity', { label: 'Intensity', min: 0, max: 1000 })
   }
 
   #createClock() {

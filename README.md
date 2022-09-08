@@ -20,6 +20,9 @@ $ yarn dev
 
 then open a new browser window and navigate to `http://localhost:1234`
 
+## Debug
+The template uses dynamic imports to include the code to run the debug panel. To display it, simply append `#debug` to the URL, i.e. `http://localhost:1234#debug`.
+
 ## Build
 
 ```shell
