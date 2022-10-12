@@ -14,7 +14,7 @@ export class Simulation {
       broadphase: new SAPBroadphase()
     })
 
-    if (window.location.hash.includes('#debug')) {
+    if (this.app.hasPhysics) {
       const { default: Debugger } = await import('cannon-es-debugger')
 
       this.debugger = new Debugger(this.app.scene, this.world, {

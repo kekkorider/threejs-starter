@@ -8,7 +8,9 @@ import {
   Mesh,
   PointLight,
   Clock,
-  Vector2
+  Vector2,
+  PlaneGeometry,
+  MeshBasicMaterial
 } from 'three'
 
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls'
@@ -35,19 +37,22 @@ class App {
       this.simulation = new Simulation(this)
 
       const { PhysicsBox } = await import('./physics/Box')
-      this.PhysicsBox = PhysicsBox
+      const { PhysicsFloor } = await import('./physics/Floor')
+
+      Object.assign(this, { PhysicsBox, PhysicsFloor })
     }
 
     this.#createBox()
     this.#createShadedBox()
     this.#createLight()
+    this.#createFloor()
     this.#createClock()
     this.#addListeners()
     this.#createControls()
 
     await this.#loadModel()
 
-    if (window.location.hash.includes('#debug')) {
+    if (window.location.hash.includes('debug')) {
       const { Debug } = await import('./Debug.js')
       new Debug(this)
     }
@@ -67,9 +72,6 @@ class App {
 
   #update() {
     const elapsed = this.clock.getElapsedTime()
-
-    this.box.rotation.y = elapsed
-    this.box.rotation.z = elapsed*0.6
 
     this.shadedBox.rotation.y = elapsed
     this.shadedBox.rotation.z = elapsed*0.6
@@ -124,6 +126,11 @@ class App {
 
     this.box = new Mesh(geometry, material)
     this.box.position.x = -1.5
+    this.box.rotation.set(
+      Math.random() * Math.PI,
+      Math.random() * Math.PI,
+      Math.random() * Math.PI
+    )
 
     this.scene.add(this.box)
 
@@ -143,6 +150,24 @@ class App {
     this.shadedBox.position.x = 1.5
 
     this.scene.add(this.shadedBox)
+  }
+
+  #createFloor() {
+    if (!this.hasPhysics) return
+
+    const geometry = new PlaneGeometry(20, 20, 1, 1)
+    const material = new MeshBasicMaterial({ color: 0x424242 })
+
+    this.floor = new Mesh(geometry, material)
+    this.floor.rotateX(-Math.PI*0.5)
+    this.floor.position.set(0, -2, 0)
+
+    this.scene.add(this.floor)
+
+    if (!this.hasPhysics) return
+
+    const body = new this.PhysicsFloor(this.floor, this.scene)
+    this.simulation.addItem(body)
   }
 
   /**
@@ -186,5 +211,8 @@ class App {
   }
 }
 
-const app = new App('#app', { physics: true })
-app.init()
+window._APP = new App('#app', {
+  physics: window.location.hash.includes('physics')
+})
+
+window._APP.init()

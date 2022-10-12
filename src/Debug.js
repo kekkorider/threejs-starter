@@ -51,10 +51,6 @@ export class Debug {
 
     this.#createColorControl(mesh.material, folder)
 
-    folder.addInput(mesh.scale, 'x', { label: 'Width', min: 0.1, max: 4 })
-    folder.addInput(mesh.scale, 'y', { label: 'Height', min: 0.1, max: 4 })
-    folder.addInput(mesh.scale, 'z', { label: 'Depth', min: 0.1, max: 4 })
-
     folder.addInput(mesh.material, 'metalness', { label: 'Metallic', min: 0, max: 1 })
     folder.addInput(mesh.material, 'roughness', { label: 'Roughness', min: 0, max: 1 })
   }

@@ -7,8 +7,6 @@ export class PhysicsBody {
   }
 
   update() {
-    if (!!!this.body) return
-
     this.mesh.position.copy(this.body.position)
     this.mesh.quaternion.copy(this.body.quaternion)
   }
