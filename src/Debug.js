@@ -7,6 +7,7 @@ export class Debug {
 
     this.#createPanel()
     this.#createSceneConfig()
+    this.#createPhysicsConfig()
     this.#createBoxConfig()
     this.#createShadedBoxConfig()
     this.#createLightConfig()
@@ -31,6 +32,16 @@ export class Debug {
 
     folder.addInput(params, 'background', { label: 'Background Color' }).on('change', e => {
       this.app.renderer.setClearColor(new Color(e.value.r / 255, e.value.g / 255, e.value.b / 255))
+    })
+  }
+
+  #createPhysicsConfig() {
+    if (!this.app.hasPhysics) return
+
+    const folder = this.pane.addFolder({ title: 'Physics' })
+
+    folder.addButton({ title: 'Toggle Debug' }).on('click', () => {
+      window.dispatchEvent(new CustomEvent('togglePhysicsDebug'))
     })
   }
 

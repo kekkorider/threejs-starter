@@ -19,15 +19,25 @@ import { gltfLoader } from './loaders'
 class App {
   #resizeCallback = () => this.#onResize()
 
-  constructor(container) {
+  constructor(container, opts = { physics: false }) {
     this.container = document.querySelector(container)
     this.screen = new Vector2(this.container.clientWidth, this.container.clientHeight)
+    this.hasPhysics = opts.physics
   }
 
   async init() {
     this.#createScene()
     this.#createCamera()
     this.#createRenderer()
+
+    if (this.hasPhysics) {
+      const { Simulation } = await import('./physics/Simulation')
+      this.simulation = new Simulation(this)
+
+      const { PhysicsBox } = await import('./physics/Box')
+      this.PhysicsBox = PhysicsBox
+    }
+
     this.#createBox()
     this.#createShadedBox()
     this.#createLight()
@@ -38,8 +48,8 @@ class App {
     await this.#loadModel()
 
     if (window.location.hash.includes('#debug')) {
-      const panel = await import('./Debug.js')
-      new panel.Debug(this)
+      const { Debug } = await import('./Debug.js')
+      new Debug(this)
     }
 
     this.renderer.setAnimationLoop(() => {
@@ -63,6 +73,8 @@ class App {
 
     this.shadedBox.rotation.y = elapsed
     this.shadedBox.rotation.z = elapsed*0.6
+
+    this.simulation?.update()
   }
 
   #render() {
@@ -114,6 +126,11 @@ class App {
     this.box.position.x = -1.5
 
     this.scene.add(this.box)
+
+    if (!this.hasPhysics) return
+
+    const body = new this.PhysicsBox(this.box, this.scene)
+    this.simulation.addItem(body)
   }
 
   /**
@@ -169,5 +186,5 @@ class App {
   }
 }
 
-const app = new App('#app')
+const app = new App('#app', { physics: true })
 app.init()
