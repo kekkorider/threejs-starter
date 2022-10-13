@@ -20,8 +20,11 @@ $ yarn dev
 
 then open a new browser window and navigate to `http://localhost:1234`
 
-## Debug
-The template uses dynamic imports to include the code to run the debug panel. To display it, simply append `#debug` to the URL, i.e. `http://localhost:1234#debug`.
+## Debug panel (Tweakpane + Stats.js)
+The template uses dynamic imports to include the code to run the debug and performance panels. To display them, simply append `debug` to the URL's hash, i.e. `http://localhost:1234#debug`, or set the `debug` option to `true` in the app config object in `/src/index.js`.
+
+## Physics (cannon-es)
+Since `v1.5.0`, the template features a basic physics setup with [cannon-es](https://github.com/pmndrs/cannon-es) that can be enabled simply by appending `physics` to the URL's hash, i.e. `http://localhost:1234#physics`, or setting the `physics` option to `true` in the app config object in `/src/index.js`.
 
 ## Build
 
