@@ -7,6 +7,7 @@ export class Debug {
 
     this.#createPanel()
     this.#createSceneConfig()
+    this.#createPhysicsConfig()
     this.#createBoxConfig()
     this.#createShadedBoxConfig()
     this.#createLightConfig()
@@ -34,15 +35,21 @@ export class Debug {
     })
   }
 
+  #createPhysicsConfig() {
+    if (!this.app.hasPhysics) return
+
+    const folder = this.pane.addFolder({ title: 'Physics' })
+
+    folder.addButton({ title: 'Toggle Debug' }).on('click', () => {
+      window.dispatchEvent(new CustomEvent('togglePhysicsDebug'))
+    })
+  }
+
   #createBoxConfig() {
     const folder = this.pane.addFolder({ title: 'Box' })
     const mesh = this.app.box
 
     this.#createColorControl(mesh.material, folder)
-
-    folder.addInput(mesh.scale, 'x', { label: 'Width', min: 0.1, max: 4 })
-    folder.addInput(mesh.scale, 'y', { label: 'Height', min: 0.1, max: 4 })
-    folder.addInput(mesh.scale, 'z', { label: 'Depth', min: 0.1, max: 4 })
 
     folder.addInput(mesh.material, 'metalness', { label: 'Metallic', min: 0, max: 1 })
     folder.addInput(mesh.material, 'roughness', { label: 'Roughness', min: 0, max: 1 })

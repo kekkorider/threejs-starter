@@ -8,7 +8,9 @@ import {
   Mesh,
   PointLight,
   Clock,
-  Vector2
+  Vector2,
+  PlaneGeometry,
+  MeshBasicMaterial
 } from 'three'
 
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls'
@@ -19,32 +21,55 @@ import { gltfLoader } from './loaders'
 class App {
   #resizeCallback = () => this.#onResize()
 
-  constructor(container) {
+  constructor(container, opts = { physics: false, debug: false }) {
     this.container = document.querySelector(container)
     this.screen = new Vector2(this.container.clientWidth, this.container.clientHeight)
+
+    this.hasPhysics = opts.physics
+    this.hasDebug = opts.debug
   }
 
   async init() {
     this.#createScene()
     this.#createCamera()
     this.#createRenderer()
+
+    if (this.hasPhysics) {
+      const { Simulation } = await import('./physics/Simulation')
+      this.simulation = new Simulation(this)
+
+      const { PhysicsBox } = await import('./physics/Box')
+      const { PhysicsFloor } = await import('./physics/Floor')
+
+      Object.assign(this, { PhysicsBox, PhysicsFloor })
+    }
+
     this.#createBox()
     this.#createShadedBox()
     this.#createLight()
+    this.#createFloor()
     this.#createClock()
     this.#addListeners()
     this.#createControls()
 
     await this.#loadModel()
 
-    if (window.location.hash.includes('#debug')) {
-      const panel = await import('./Debug.js')
-      new panel.Debug(this)
+    if (this.hasDebug) {
+      const { Debug } = await import('./Debug.js')
+      new Debug(this)
+
+      const { default: Stats } = await import('stats.js')
+      this.stats = new Stats()
+      document.body.appendChild(this.stats.dom)
     }
 
     this.renderer.setAnimationLoop(() => {
+      this.stats?.begin()
+
       this.#update()
       this.#render()
+
+      this.stats?.end()
     })
 
     console.log(this)
@@ -58,11 +83,10 @@ class App {
   #update() {
     const elapsed = this.clock.getElapsedTime()
 
-    this.box.rotation.y = elapsed
-    this.box.rotation.z = elapsed*0.6
-
     this.shadedBox.rotation.y = elapsed
     this.shadedBox.rotation.z = elapsed*0.6
+
+    this.simulation?.update()
   }
 
   #render() {
@@ -112,8 +136,18 @@ class App {
 
     this.box = new Mesh(geometry, material)
     this.box.position.x = -1.5
+    this.box.rotation.set(
+      Math.random() * Math.PI,
+      Math.random() * Math.PI,
+      Math.random() * Math.PI
+    )
 
     this.scene.add(this.box)
+
+    if (!this.hasPhysics) return
+
+    const body = new this.PhysicsBox(this.box, this.scene)
+    this.simulation.addItem(body)
   }
 
   /**
@@ -126,6 +160,22 @@ class App {
     this.shadedBox.position.x = 1.5
 
     this.scene.add(this.shadedBox)
+  }
+
+  #createFloor() {
+    if (!this.hasPhysics) return
+
+    const geometry = new PlaneGeometry(20, 20, 1, 1)
+    const material = new MeshBasicMaterial({ color: 0x424242 })
+
+    this.floor = new Mesh(geometry, material)
+    this.floor.rotateX(-Math.PI*0.5)
+    this.floor.position.set(0, -2, 0)
+
+    this.scene.add(this.floor)
+
+    const body = new this.PhysicsFloor(this.floor, this.scene)
+    this.simulation.addItem(body)
   }
 
   /**
@@ -169,5 +219,9 @@ class App {
   }
 }
 
-const app = new App('#app')
-app.init()
+window._APP_ = new App('#app', {
+  physics: window.location.hash.includes('physics'),
+  debug: window.location.hash.includes('debug')
+})
+
+window._APP_.init()
