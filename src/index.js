@@ -21,10 +21,12 @@ import { gltfLoader } from './loaders'
 class App {
   #resizeCallback = () => this.#onResize()
 
-  constructor(container, opts = { physics: false }) {
+  constructor(container, opts = { physics: false, debug: false }) {
     this.container = document.querySelector(container)
     this.screen = new Vector2(this.container.clientWidth, this.container.clientHeight)
+
     this.hasPhysics = opts.physics
+    this.hasDebug = opts.debug
   }
 
   async init() {
@@ -52,7 +54,7 @@ class App {
 
     await this.#loadModel()
 
-    if (window.location.hash.includes('debug')) {
+    if (this.hasDebug) {
       const { Debug } = await import('./Debug.js')
       new Debug(this)
     }
@@ -211,8 +213,9 @@ class App {
   }
 }
 
-window._APP = new App('#app', {
-  physics: window.location.hash.includes('physics')
+window._APP_ = new App('#app', {
+  physics: window.location.hash.includes('physics'),
+  debug: window.location.hash.includes('debug')
 })
 
-window._APP.init()
+window._APP_.init()
