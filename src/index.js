@@ -174,8 +174,6 @@ class App {
 
     this.scene.add(this.floor)
 
-    if (!this.hasPhysics) return
-
     const body = new this.PhysicsFloor(this.floor, this.scene)
     this.simulation.addItem(body)
   }
