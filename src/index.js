@@ -57,11 +57,19 @@ class App {
     if (this.hasDebug) {
       const { Debug } = await import('./Debug.js')
       new Debug(this)
+
+      const { default: Stats } = await import('stats.js')
+      this.stats = new Stats()
+      document.body.appendChild(this.stats.dom)
     }
 
     this.renderer.setAnimationLoop(() => {
+      this.stats?.begin()
+
       this.#update()
       this.#render()
+
+      this.stats?.end()
     })
 
     console.log(this)
