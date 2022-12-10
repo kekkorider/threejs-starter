@@ -6,5 +6,5 @@ import fragmentShader from './fragment.glsl'
 export const SampleShaderMaterial = new ShaderMaterial({
   vertexShader,
   fragmentShader,
-  transparent: true
+  transparent: false
 })

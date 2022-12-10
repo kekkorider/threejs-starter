@@ -1,5 +1,5 @@
 import { Pane } from 'tweakpane'
-import { Color } from 'three'
+import { Color, Vector4 } from 'three'
 
 export class Debug {
   constructor(app) {
@@ -84,6 +84,26 @@ export class Debug {
 
     folder.addInput(params, 'color', { label: 'Color' }).on('change', e => {
       obj.color.setRGB(e.value.r, e.value.g, e.value.b).multiplyScalar(1 / 255)
+    })
+  }
+
+  /**
+   * Adds a color control for a custom uniform to the given object in the given folder.
+   *
+   * @param {THREE.Mesh} obj A `THREE.Mesh` object
+   * @param {*} folder The folder to add the control to
+   * @param {String} uniformName The name of the uniform to control
+   * @param {String} label The label to use for the control
+   */
+  #createColorUniformControl(obj, folder, uniformName, label = 'Color') {
+    const preMultVector = new Vector4(255, 255, 255, 1)
+    const postMultVector = new Vector4(1 / 255, 1 / 255, 1 / 255, 1)
+
+    const baseColor255 = obj.material.uniforms[uniformName].value.clone().multiply(preMultVector)
+    const params = { color: { r: baseColor255.x, g: baseColor255.y, b: baseColor255.z, a: baseColor255.w } }
+
+    folder.addInput(params, 'color', { label, view: 'color', color: { alpha: true } }).on('change', e => {
+      obj.material.uniforms[uniformName].value.set(e.value.r, e.value.g, e.value.b, e.value.a).multiply(postMultVector)
     })
   }
 }
