@@ -9,14 +9,14 @@
     "preview": "vite preview"
   },
   "devDependencies": {
-    "vite": "^3.1.7",
-    "vite-plugin-glsl": "^0.5.1"
+    "vite": "^4.0.0",
+    "vite-plugin-glsl": "^0.5.4"
   },
   "dependencies": {
     "cannon-es": "^0.20.0",
     "cannon-es-debugger": "^1.0.0",
     "stats.js": "^0.17.0",
-    "three": "^0.145.0",
-    "tweakpane": "^3.1.0"
+    "three": "^0.147.0",
+    "tweakpane": "^3.1.1"
   }
 }
