@@ -14,19 +14,22 @@ import {
 } from 'three'
 
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls'
+import WebGPURenderer from 'three/src/renderers/webgpu/WebGPURenderer.js'
 
 import { SampleShaderMaterial } from './materials/SampleShaderMaterial'
+// import { TSLSampleMaterial } from './materials/TSLSampleMaterial'
 import { gltfLoader } from './loaders'
 
 class App {
   #resizeCallback = () => this.#onResize()
 
-  constructor(container, opts = { physics: false, debug: false }) {
+  constructor(container, opts = { physics: false, debug: false, webgpu: false }) {
     this.container = document.querySelector(container)
     this.screen = new Vector2(this.container.clientWidth, this.container.clientHeight)
 
     this.hasPhysics = opts.physics
     this.hasDebug = opts.debug
+    this.webgpu = opts.webgpu
   }
 
   async init() {
@@ -83,6 +86,9 @@ class App {
   #update() {
     const elapsed = this.clock.getElapsedTime()
 
+    this.box.rotation.y = elapsed*0.72
+    this.box.rotation.z = elapsed*0.6
+
     this.shadedBox.rotation.y = elapsed
     this.shadedBox.rotation.z = elapsed*0.6
 
@@ -103,10 +109,14 @@ class App {
   }
 
   #createRenderer() {
-    this.renderer = new WebGLRenderer({
+    const params = {
       alpha: true,
       antialias: window.devicePixelRatio === 1
-    })
+    }
+
+    this.renderer = this.webgpu ?
+                      new WebGPURenderer({ ...params }) :
+                      new WebGLRenderer({ ...params })
 
     this.container.appendChild(this.renderer.domElement)
 
@@ -187,8 +197,7 @@ class App {
     const mesh = gltf.scene.children[0]
     mesh.position.z = 1.5
 
-    mesh.material = SampleShaderMaterial.clone()
-    mesh.material.wireframe = true
+    mesh.material = SampleShaderMaterial
 
     this.scene.add(mesh)
   }
@@ -221,6 +230,7 @@ class App {
 
 window._APP_ = new App('#app', {
   physics: window.location.hash.includes('physics'),
+  webgpu: false,
   debug: window.location.hash.includes('debug')
 })
 

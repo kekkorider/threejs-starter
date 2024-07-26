@@ -7,5 +7,13 @@ export default defineConfig({
   },
   plugins: [
     glsl()
-  ]
+  ],
+  optimizeDeps: {
+    esbuildOptions: {
+      target: 'esnext'
+    }
+  },
+  build: {
+    target: 'esnext'
+  }
 })
