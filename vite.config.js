@@ -1,4 +1,5 @@
 import glsl from 'vite-plugin-glsl'
+import { resolve } from 'path'
 import { defineConfig } from 'vite'
 
 export default defineConfig({
@@ -14,6 +15,12 @@ export default defineConfig({
     }
   },
   build: {
-    target: 'esnext'
+    target: 'esnext',
+    rollupOptions: {
+      input: {
+        main: resolve(__dirname, 'index.html'),
+        webgpu: resolve(__dirname, 'webgpu.html'),
+      }
+    }
   }
 })
