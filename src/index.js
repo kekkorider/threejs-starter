@@ -1,4 +1,3 @@
-
 import {
   Scene,
   WebGLRenderer,
@@ -14,22 +13,19 @@ import {
 } from 'three'
 
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls'
-import WebGPURenderer from 'three/src/renderers/webgpu/WebGPURenderer.js'
 
 import { SampleShaderMaterial } from './materials/SampleShaderMaterial'
-// import { TSLSampleMaterial } from './materials/TSLSampleMaterial'
 import { gltfLoader } from './loaders'
 
 class App {
   #resizeCallback = () => this.#onResize()
 
-  constructor(container, opts = { physics: false, debug: false, webgpu: false }) {
+  constructor(container, opts = { physics: false, debug: false }) {
     this.container = document.querySelector(container)
     this.screen = new Vector2(this.container.clientWidth, this.container.clientHeight)
 
     this.hasPhysics = opts.physics
     this.hasDebug = opts.debug
-    this.webgpu = opts.webgpu
   }
 
   async init() {
@@ -114,9 +110,7 @@ class App {
       antialias: window.devicePixelRatio === 1
     }
 
-    this.renderer = this.webgpu ?
-                      new WebGPURenderer({ ...params }) :
-                      new WebGLRenderer({ ...params })
+    this.renderer = new WebGLRenderer({ ...params })
 
     this.container.appendChild(this.renderer.domElement)
 
@@ -230,7 +224,6 @@ class App {
 
 window._APP_ = new App('#app', {
   physics: window.location.hash.includes('physics'),
-  webgpu: false,
   debug: window.location.hash.includes('debug')
 })
 
