@@ -4,9 +4,10 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
-    "preview": "vite preview"
+    "dev": "pnpm copy-draco && vite",
+    "build": "pnpm copy-draco && tsc && vite build",
+    "preview": "vite preview",
+    "copy-draco": "node scripts/CopyDracoFiles.js"
   },
   "devDependencies": {
     "@types/three": "^0.185.1",

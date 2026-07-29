@@ -1,33 +1,33 @@
 import { Object3DBehaviour } from "three-start"
 
-type params = {
-  axis: 'x' | 'y' | 'z'
-  speed: number
+type Params = {
+  axis?: 'x' | 'y' | 'z'
+  speed?: number
 }
 
 export class Spin extends Object3DBehaviour {
-  axis: params['axis'] = 'y'
-  speed: params['speed'] = 1
+  axis?: Params['axis']
+  speed?: Params['speed']
 
-  private _initRotY: number = 0
+  private _initialRotation: number = 0
 
-  constructor(params: params) {
+  constructor(params?: Params) {
       super()
 
-      this.axis = params.axis
-      this.speed = params.speed
+      this.axis = params?.axis ?? 'y'
+      this.speed = params?.speed ?? 1
   }
 
   onAwake() {
-    this._initRotY = this.object.rotation[this.axis]
+    this._initialRotation = this.object.rotation[this.axis!]
   }
 
   onUpdate() {
     const dt = this.ctx.getDeltaTime()
-    this.object.rotation[this.axis] += dt * this.speed
+    this.object.rotation[this.axis!] += dt * this.speed!
   }
 
   onDestroy() {
-    this.object.rotation[this.axis] = this._initRotY
+    this.object.rotation[this.axis!] = this._initialRotation
   }
 }
