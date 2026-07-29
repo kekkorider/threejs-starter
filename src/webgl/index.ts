@@ -2,6 +2,7 @@ import * as THREE from "three/webgpu"
 import { ThreeStart, addComponent } from "three-start"
 
 import { AssetLoaderModule } from './modules/AssetLoader'
+import { OrbitControlsModule } from './modules/OrbitControls'
 
 import { NormalMaterial } from './materials/normal'
 
@@ -14,6 +15,7 @@ const starter = new ThreeStart()
 
 starter.addModules({
   assetLoader: new AssetLoaderModule(),
+  orbitControls: new OrbitControlsModule(),
 })
 
 const { scene, camera, modules } = starter.ctx
@@ -39,7 +41,7 @@ scene.add(cube)
 // Suzanne GLB model
 //
 const glb = await modules.assetLoader.loadModels('/suzanne.glb')
-const suzanne = glb.scene.getObjectByName('Suzanne')
+const suzanne = glb.scene.getObjectByName('Suzanne') as THREE.Mesh
 addComponent(suzanne, Spin, { axis: 'z' })
 suzanne.position.x = 1
 suzanne.scale.setScalar(1.3)

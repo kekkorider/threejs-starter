@@ -1,5 +1,5 @@
 import { LoadingManager } from 'three/webgpu'
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
+import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js'
 import { ContextModule } from "three-start"
 
@@ -24,29 +24,25 @@ export class AssetLoaderModule extends ContextModule {
   /**
    * Load a single model or an array of models.
    *
-   * @param {String|String[]} resources Single URL or array of URLs of the model(s) to load.
-   * @returns Object|Object[]
+   * @param resources Single URL or array of URLs of the model(s) to load.
    */
-  async loadModels(resources: string | string[]) {
+  loadModels(resources: string): Promise<GLTF>
+  loadModels(resources: string[]): Promise<GLTF[]>
+  async loadModels(resources: string | string[]): Promise<GLTF | GLTF[]> {
     if (Array.isArray(resources)) {
-      const promises = resources.map(url => this.#loadModel(url))
-      return await Promise.all(promises)
-    } else {
-      return await this.#loadModel(resources)
+      return Promise.all(resources.map(url => this.#loadModel(url)))
     }
+    return this.#loadModel(resources)
   }
 
   /**
    * Load a single model.
    *
-   * @param {String} url The URL of the model to load
-   * @returns Promise
+   * @param url The URL of the model to load
    */
-  #loadModel(url: string) {
-    return new Promise(resolve => {
-      this.gltfLoader!.load(url, (model: object) => {
-        resolve(model)
-      })
+  #loadModel(url: string): Promise<GLTF> {
+    return new Promise((resolve, reject) => {
+      this.gltfLoader!.load(url, resolve, undefined, reject)
     })
   }
 }
