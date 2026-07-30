@@ -5,6 +5,7 @@ import { AssetLoaderModule } from './modules/AssetLoader'
 import { OrbitControlsModule } from './modules/OrbitControls'
 
 import { NormalMaterial } from './materials/normal'
+import { MatcapMaterial } from './materials/matcap'
 
 import { Spin } from './behaviors/Spin'
 
@@ -23,6 +24,8 @@ const { scene, camera, modules } = starter.ctx
 starter.mount(document.getElementById('app')! as HTMLDivElement)
 starter.start()
 
+await modules.assetLoader.loadTextures('/diamond-07.png')
+
 //
 // Camera
 //
@@ -40,10 +43,13 @@ scene.add(cube)
 //
 // Suzanne GLB model
 //
-const glb = await modules.assetLoader.loadModels('/suzanne.glb')
-const suzanne = glb.scene.getObjectByName('Suzanne') as THREE.Mesh
+await modules.assetLoader.loadModels('/suzanne.glb')
+const suzanne = modules.assetLoader.models.get('suzanne')!.scene.getObjectByName('Suzanne') as THREE.Mesh
 addComponent(suzanne, Spin, { axis: 'z' })
 suzanne.position.x = 1
 suzanne.scale.setScalar(1.3)
-suzanne.material = NormalMaterial
+MatcapMaterial.matcap = modules.assetLoader.textures.get('diamond-07')!
+suzanne.material = MatcapMaterial
 scene.add(suzanne)
+
+console.log(modules.assetLoader)
