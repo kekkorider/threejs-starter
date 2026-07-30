@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      crashcat:
+        specifier: ^0.0.5
+        version: 0.0.5(three@0.185.1)
       eventemitter3:
         specifier: ^5.0.4
         version: 5.0.4
@@ -288,6 +291,14 @@ packages:
     cpu: [x64]
     os: [win32]
 
+  crashcat@0.0.5:
+    resolution: {integrity: sha512-8BcoWz5sfUxUTCzFlBImHNsWei4Wso18MOHkjeZjgEGCq+SPlbYr65USCCeVsEOTq1GM6Aai/HHvmgfpKw61dQ==}
+    peerDependencies:
+      three: '>=0.182.0'
+    peerDependenciesMeta:
+      three:
+        optional: true
+
   detect-libc@2.1.2:
     resolution: {integrity: sha512-Btj2BOOO83o3WyH59e8MgXsxEQVcarkUOpEYrubB0urwnN10yQ364rsiByU11nZlqWYZm05i/of7io4mzihBtQ==}
     engines: {node: '>=8'}
@@ -388,6 +399,9 @@ packages:
   lightningcss@1.33.0:
     resolution: {integrity: sha512-WkUDrojuJs0xkgGf2udWxa3yGBRxPtxUkB79i6aCZLRgc7PM8fZe9TosfPDcvEpQZbuFASnHYmRLBLUbmLOIIA==}
     engines: {node: '>= 12.0.0'}
+
+  mathcat@0.0.13:
+    resolution: {integrity: sha512-d5KhlEP3p6/ACSGpgwSBPCiiubdVXYb95mkK/rfQd5DirqHjMTYpvX5AP3vZXiQGO4y9DomRgSjOYwXW3dhA+w==}
 
   meshoptimizer@1.1.1:
     resolution: {integrity: sha512-oRFNWJRDA/WTrVj7NWvqa5HqE1t9MYDj2VaWirQCzCCrAd2GHrqR/sQezCxiWATPNlKTcRaPRHPJwIRoPBAp5g==}
@@ -643,6 +657,12 @@ snapshots:
   '@typescript/typescript-win32-x64@7.0.2':
     optional: true
 
+  crashcat@0.0.5(three@0.185.1):
+    dependencies:
+      mathcat: 0.0.13
+    optionalDependencies:
+      three: 0.185.1
+
   detect-libc@2.1.2: {}
 
   eventemitter3@5.0.4: {}
@@ -706,6 +726,8 @@ snapshots:
       lightningcss-linux-x64-musl: 1.33.0
       lightningcss-win32-arm64-msvc: 1.33.0
       lightningcss-win32-x64-msvc: 1.33.0
+
+  mathcat@0.0.13: {}
 
   meshoptimizer@1.1.1: {}
 

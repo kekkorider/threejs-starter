@@ -1,13 +1,17 @@
 import * as THREE from "three/webgpu"
-import { ThreeStart, addComponent } from "three-start"
+import { ThreeStart, addComponent, getComponent, ThreeContextEvents } from "three-start"
+import { MotionType } from 'crashcat'
+import type { RigidBody } from 'crashcat'
 
 import { AssetLoaderModule } from './modules/AssetLoader'
 import { OrbitControlsModule } from './modules/OrbitControls'
+import { PhysicsModule } from './modules/Physics'
 
 import { NormalMaterial } from './materials/normal'
 import { MatcapMaterial } from './materials/matcap'
 
 import { Spin } from './behaviors/Spin'
+import { BodyBox } from './behaviors/physics'
 
 //
 // Setup
@@ -17,6 +21,7 @@ const starter = new ThreeStart()
 starter.addModules({
   assetLoader: new AssetLoaderModule(),
   orbitControls: new OrbitControlsModule(),
+  physics: new PhysicsModule(),
 })
 
 const { scene, camera, modules } = starter.ctx
@@ -25,6 +30,7 @@ starter.mount(document.getElementById('app')! as HTMLDivElement)
 starter.start()
 
 await modules.assetLoader.loadTextures('/diamond-07.png')
+await modules.assetLoader.loadModels('/suzanne.glb')
 
 //
 // Camera
@@ -32,24 +38,43 @@ await modules.assetLoader.loadTextures('/diamond-07.png')
 camera.position.z = 5
 
 //
-// Cube
+// Spinning cube
 //
 const cube = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), NormalMaterial)
 addComponent(cube, Spin, { axis: 'y', speed: 1 })
 addComponent(cube, Spin, { axis: 'z', speed: 0.87 })
-cube.position.x = -1
+cube.position.x = -1.5
 scene.add(cube)
+
+//
+// Floor
+//
+const floor = new THREE.Mesh(new THREE.BoxGeometry(10, 0.5, 10), NormalMaterial)
+floor.position.y = -2
+
+addComponent(floor, BodyBox, { motionType: MotionType.STATIC })
+
+scene.add(floor)
+
+//
+// Physics cube
+//
+const physicsCube = new THREE.Mesh(new THREE.BoxGeometry(0.75, 1, 1), NormalMaterial)
+physicsCube.position.x = -1
+physicsCube.position.z = -1
+physicsCube.rotation.z = Math.PI * Math.random()
+physicsCube.rotation.x = Math.PI * Math.random()
+
+addComponent(physicsCube, BodyBox, { motionType: MotionType.DYNAMIC })
+scene.add(physicsCube)
 
 //
 // Suzanne GLB model
 //
-await modules.assetLoader.loadModels('/suzanne.glb')
 const suzanne = modules.assetLoader.models.get('suzanne')!.scene.getObjectByName('Suzanne') as THREE.Mesh
 addComponent(suzanne, Spin, { axis: 'z' })
-suzanne.position.x = 1
+suzanne.position.x = 1.5
 suzanne.scale.setScalar(1.3)
 MatcapMaterial.matcap = modules.assetLoader.textures.get('diamond-07')!
 suzanne.material = MatcapMaterial
 scene.add(suzanne)
-
-console.log(modules.assetLoader)
