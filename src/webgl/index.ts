@@ -1,7 +1,6 @@
 import * as THREE from "three/webgpu"
-import { ThreeStart, addComponent, getComponent, ThreeContextEvents } from "three-start"
+import { ThreeStart, addComponent } from "three-start"
 import { MotionType } from 'crashcat'
-import type { RigidBody } from 'crashcat'
 
 import { AssetLoaderModule } from './modules/AssetLoader'
 import { OrbitControlsModule } from './modules/OrbitControls'
@@ -11,7 +10,7 @@ import { NormalMaterial } from './materials/normal'
 import { MatcapMaterial } from './materials/matcap'
 
 import { Spin } from './behaviors/Spin'
-import { BodyBox } from './behaviors/physics'
+import { BodyBox, BodySphere } from './behaviors/physics'
 
 //
 // Setup
@@ -67,6 +66,16 @@ physicsCube.rotation.x = Math.PI * Math.random()
 
 addComponent(physicsCube, BodyBox, { motionType: MotionType.DYNAMIC })
 scene.add(physicsCube)
+
+//
+// Physics sphere
+//
+const physicsSphere = new THREE.Mesh(new THREE.SphereGeometry(0.5), NormalMaterial)
+physicsSphere.position.x = 1
+physicsSphere.position.z = -1
+
+addComponent(physicsSphere, BodySphere, { motionType: MotionType.DYNAMIC })
+scene.add(physicsSphere)
 
 //
 // Suzanne GLB model

@@ -5,7 +5,7 @@ import type * as THREE from 'three/webgpu'
 type GeometryParams = {
   width: number
   height: number
-  depth: number,
+  depth: number
   depthSegments: number
   heightSegments: number
   widthSegments: number
