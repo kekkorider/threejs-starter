@@ -20,7 +20,7 @@ const starter = new ThreeStart()
 starter.addModules({
   assetLoader: new AssetLoaderModule(),
   orbitControls: new OrbitControlsModule(),
-  physics: new PhysicsModule(),
+  physics: new PhysicsModule(true),
 })
 
 const { scene, camera, modules } = starter.ctx

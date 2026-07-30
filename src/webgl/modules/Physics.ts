@@ -13,6 +13,7 @@ import {
 import { debugRenderer } from "crashcat/three"
 
 export class PhysicsModule extends ContextModule {
+  isDebug: boolean = false
   debugState: any | null = null
   settings: WorldSettings | null = null
   world: World | null = null
@@ -22,6 +23,11 @@ export class PhysicsModule extends ContextModule {
 
   OBJECT_LAYER_MOVING: number | null = null
   OBJECT_LAYER_NOT_MOVING: number | null = null
+
+  constructor(isDebug: boolean = false) {
+    super()
+    this.isDebug = isDebug
+  }
 
   onAwake() {
     registerAll()
@@ -39,12 +45,17 @@ export class PhysicsModule extends ContextModule {
 
     this.world = createWorld(this.settings)
 
-    this.createDebug()
+    if (this.isDebug) {
+      this.createDebug()
+    }
   }
 
   onUpdate() {
     updateWorld(this.world as World, undefined, this.ctx.getDeltaTime() as number)
-    debugRenderer.update(this.debugState, this.world as World)
+
+    if (this.isDebug) {
+      debugRenderer.update(this.debugState, this.world as World)
+    }
   }
 
   createDebug() {
