@@ -15,15 +15,16 @@ export class Body extends Object3DBehaviour {
   bodyBias: number = 0.01
   shape: Shape | null = null
 
-  constructor(params?: Params) {
+  settings: RigidBodySettings | null = null
+
+  constructor(settings: RigidBodySettings) {
     super()
 
-    this.motionType = params?.motionType ?? MotionType.STATIC
+    this.settings = settings
   }
 
   onAwake() {
-    const { OBJECT_LAYER_NOT_MOVING, OBJECT_LAYER_MOVING } = this.ctx.modules.physics
-    this.objectLayer = this.motionType === MotionType.STATIC ? OBJECT_LAYER_NOT_MOVING : OBJECT_LAYER_MOVING
+    this.motionType = this.settings?.motionType ?? MotionType.STATIC
 
     this.createShape()
     this.createBody()
@@ -56,15 +57,26 @@ export class Body extends Object3DBehaviour {
   }
 
   createBody() {
-    this.body = rigidBody.create(this.ctx.modules.physics.world as World, {
-      motionType: this.motionType as number,
-      shape: this.shape,
-      position: this.object.position.clone().toArray(),
-      quaternion: this.object.quaternion.clone().toArray(),
-      restitution: 0.65,
-      mass: 1,
-      objectLayer: this.objectLayer as number,
-    } as RigidBodySettings)
+    const {
+      OBJECT_LAYER_NOT_MOVING,
+      OBJECT_LAYER_MOVING
+    } = this.ctx.modules.physics
+
+    const objectLayer = this.motionType === MotionType.STATIC ?
+                          OBJECT_LAYER_NOT_MOVING :
+                          OBJECT_LAYER_MOVING
+
+    this.body = rigidBody.create(
+      this.ctx.modules.physics.world as World,
+        {
+        ...this.settings,
+        shape: this.shape,
+        position: this.object.position.clone().toArray(),
+        quaternion: this.object.quaternion.clone().toArray(),
+        objectLayer,
+        motionType: this.motionType,
+      } as RigidBodySettings
+    )
   }
 
   createShape() {}

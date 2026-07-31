@@ -2,6 +2,8 @@ import * as THREE from "three/webgpu"
 import { ThreeStart, addComponent } from "three-start"
 import { MotionType } from 'crashcat'
 
+import type { RigidBodySettings } from 'crashcat'
+
 import { AssetLoaderModule } from './modules/AssetLoader'
 import { OrbitControlsModule } from './modules/OrbitControls'
 import { PhysicsModule } from './modules/Physics'
@@ -51,7 +53,9 @@ scene.add(cube)
 const floor = new THREE.Mesh(new THREE.BoxGeometry(10, 0.5, 10), NormalMaterial)
 floor.position.y = -2
 
-addComponent(floor, BodyBox, { motionType: MotionType.STATIC })
+addComponent(floor, BodyBox, {
+  motionType: MotionType.STATIC,
+} as RigidBodySettings)
 
 scene.add(floor)
 
@@ -63,7 +67,12 @@ suzanne.position.x = 1.5
 suzanne.geometry.scale(1.3, 1.3, 1.3)
 MatcapMaterial.matcap = modules.assetLoader.textures.get('diamond-07')!
 suzanne.material = MatcapMaterial
-addComponent(suzanne, BodyConvexHull, { motionType: MotionType.DYNAMIC })
+addComponent(suzanne, BodyConvexHull, {
+  mass: 1,
+  motionType: MotionType.DYNAMIC,
+  restitution: 0.65,
+  friction: 0.3
+} as RigidBodySettings)
 scene.add(suzanne)
 
 //
@@ -75,15 +84,24 @@ physicsCube.position.z = -1
 physicsCube.rotation.z = Math.PI * Math.random()
 physicsCube.rotation.x = Math.PI * Math.random()
 
-addComponent(physicsCube, BodyBox, { motionType: MotionType.DYNAMIC })
+addComponent(physicsCube, BodyBox, {
+  motionType: MotionType.DYNAMIC,
+  restitution: 0.2,
+  friction: 0.3,
+  mass: 1
+} as RigidBodySettings)
 scene.add(physicsCube)
 
 //
 // Physics sphere
 //
 const physicsSphere = new THREE.Mesh(new THREE.SphereGeometry(0.5), NormalMaterial)
-physicsSphere.position.x = 1.5
-physicsSphere.position.z = -1.5
+physicsSphere.position.x = 1
+physicsSphere.position.y = 2
+physicsSphere.position.z = -2.5
 
-addComponent(physicsSphere, BodySphere, { motionType: MotionType.DYNAMIC })
+addComponent(physicsSphere, BodySphere, {
+  motionType: MotionType.DYNAMIC,
+  restitution: .8
+} as RigidBodySettings)
 scene.add(physicsSphere)

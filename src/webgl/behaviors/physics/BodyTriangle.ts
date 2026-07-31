@@ -1,27 +1,31 @@
-import { triangleMesh, MotionType } from "crashcat"
+import { triangleMesh } from "crashcat"
 import { Body } from './Body'
 
 import type * as THREE from 'three/webgpu'
+import type { RigidBodySettings } from 'crashcat'
 
-type Params = {
-  motionType?: MotionType | null
-  bodyGeometry?: THREE.BufferGeometry | null
+type BodyParams = {
+  geometry?: THREE.BufferGeometry | null
 }
 
 export class BodyTriangle extends Body {
-  bodyGeometry: Params['bodyGeometry'] = null
+  geometry: BodyParams['geometry'] = null
 
-  constructor(params?: Params) {
-    super({ motionType: params?.motionType ?? MotionType.STATIC })
+  constructor(settings: RigidBodySettings, params?: BodyParams) {
+    if (!Object.hasOwn(settings, 'mass')) {
+      throw new Error('Settings must include `mass` property')
+    }
 
-    if (params?.bodyGeometry) {
-      this.bodyGeometry = params.bodyGeometry
+    super(settings)
+
+    if (params?.geometry) {
+      this.geometry = params.geometry
     }
   }
 
   override createShape(): void {
     let { geometry } = this.object as THREE.Mesh
-    this.bodyGeometry && (geometry = this.bodyGeometry)
+    this.geometry && (geometry = this.geometry)
 
     const positions = geometry.getAttribute('position') as THREE.BufferAttribute
     const indices = geometry.getIndex() as THREE.BufferAttribute
