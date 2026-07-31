@@ -84,10 +84,10 @@ scene.add(floor)
 //
 // Suzanne GLB model
 //
-const suzanne = modules.assetLoader.models.get('suzanne')!.scene.getObjectByName('Suzanne') as THREE.Mesh
+const suzanne = modules.assetLoader.getModel('suzanne')!.scene.getObjectByName('Suzanne') as THREE.Mesh
 suzanne.position.x = 1.5
 suzanne.geometry.scale(1.3, 1.3, 1.3)
-MatcapMaterial.matcap = modules.assetLoader.textures.get('diamond-07')!
+MatcapMaterial.matcap = modules.assetLoader.getTexture('diamond-07')!
 suzanne.material = MatcapMaterial
 addComponent(suzanne, BodyConvexHull, {
   mass: 1,

@@ -8,8 +8,8 @@ export class AssetLoaderModule extends ContextModule {
   private gltfLoader: GLTFLoader | null = null
   private textureLoader: TextureLoader | null = null
 
-  models: Map<string, GLTF> = new Map()
-  textures: Map<string, Texture> = new Map()
+  private models: Map<string, GLTF> = new Map()
+  private textures: Map<string, Texture> = new Map()
 
   onAwake() {
     this.createLoadingManager()
@@ -92,6 +92,24 @@ export class AssetLoaderModule extends ContextModule {
         return resolve(gltf)
       }, undefined, reject)
     })
+  }
+
+  /**
+   * Get a texture by name.
+   *
+   * @param name The name of the texture to get
+   */
+  getTexture(name: string): Texture | undefined {
+    return this.textures.get(name)
+  }
+
+  /**
+   * Get a model by name.
+   *
+   * @param name The name of the model to get
+   */
+  getModel(name: string): GLTF | undefined {
+    return this.models.get(name)
   }
 }
 
