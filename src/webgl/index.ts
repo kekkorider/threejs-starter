@@ -1,5 +1,20 @@
 import * as THREE from "three/webgpu"
-import { ThreeStart, addComponent } from "three-start"
+import {
+  mrt,
+  output,
+  velocity,
+  packNormalToRGB,
+  normalView,
+  screenUV,
+  Fn,
+  mix,
+  step
+} from 'three/tsl'
+import {
+  ThreeContextEvents,
+  ThreeStart,
+  addComponent
+} from "three-start"
 import { MotionType } from 'crashcat'
 
 import type { RigidBodySettings } from 'crashcat'
@@ -7,9 +22,11 @@ import type { RigidBodySettings } from 'crashcat'
 import { AssetLoaderModule } from './modules/AssetLoader'
 import { OrbitControlsModule } from './modules/OrbitControls'
 import { PhysicsModule } from './modules/Physics'
+import { InspectorModule } from './modules/Inspector'
 
 import { NormalMaterial } from './materials/normal'
 import { MatcapMaterial } from './materials/matcap'
+import { ScaleMaterial } from './materials/scale'
 
 import { Spin } from './behaviors/Spin'
 import { BodyBox, BodySphere, BodyConvexHull } from './behaviors/physics'
@@ -23,12 +40,17 @@ starter.addModules({
   assetLoader: new AssetLoaderModule(),
   orbitControls: new OrbitControlsModule(),
   physics: new PhysicsModule(true),
+  inspector: new InspectorModule(),
 })
 
-const { scene, camera, modules } = starter.ctx
+const { scene, camera, modules, scenePass, renderPipeline } = starter.ctx
+
+starter.start()
+starter.ctx.once(ThreeContextEvents.Mount, () => {
+  createPostProcessing()
+})
 
 starter.mount(document.getElementById('app')! as HTMLDivElement)
-starter.start()
 
 await modules.assetLoader.loadTextures('/diamond-07.png')
 await modules.assetLoader.loadModels('/suzanne.glb')
@@ -41,7 +63,7 @@ camera.position.z = 5
 //
 // Spinning cube
 //
-const cube = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), NormalMaterial)
+const cube = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), ScaleMaterial)
 addComponent(cube, Spin, { axis: 'y', speed: 1 })
 addComponent(cube, Spin, { axis: 'z', speed: 0.87 })
 cube.position.x = -1.5
@@ -105,3 +127,31 @@ addComponent(physicsSphere, BodySphere, {
   restitution: .8
 } as RigidBodySettings)
 scene.add(physicsSphere)
+
+//
+// Post-processing and Inspector
+//
+function createPostProcessing(): void {
+  scenePass.setMRT(
+    mrt({
+      output,
+      velocity,
+      normal: packNormalToRGB(normalView)
+    })
+  )
+
+  const scenePassColor = scenePass.getTextureNode('output').toInspector('Output')
+  const scenePassDepth = scenePass.getTextureNode('depth').toInspector('Depth', () => scenePass.getLinearDepthNode())
+  const scenePassNormal = scenePass.getTextureNode('normal').toInspector('Normal')
+  const scenePassVelocity = scenePass.getTextureNode('velocity').toInspector('Velocity')
+
+  const outputNode = Fn(() => {
+    const top = mix(scenePassColor.renderOutput(), scenePassDepth.step(1), step(0.5, screenUV.x))
+    const bottom = mix(scenePassNormal, scenePassVelocity, step(0.5, screenUV.x))
+    const out = mix(top, bottom, step(0.5, screenUV.y))
+
+    return out
+  })
+
+  renderPipeline.outputNode = outputNode()
+}
