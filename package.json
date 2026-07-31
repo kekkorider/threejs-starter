@@ -10,7 +10,7 @@
     "dev": "pnpm copy-draco && vite",
     "build": "pnpm copy-draco && tsc && vite build",
     "preview": "vite preview",
-    "copy-draco": "node scripts/CopyDracoFiles.js"
+    "copy-draco": "node scripts/copyDracoFiles.js"
   },
   "devDependencies": {
     "@types/three": "^0.185.1",
