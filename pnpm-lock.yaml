@@ -4,6 +4,11 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  '@types/three@0.185.1':
+    hash: ca2ebc7aae4406ad321465c5cc27bbbc58caac907b41a8b0b0ebfd63beaf5d5f
+    path: patches/@types__three@0.185.1.patch
+
 importers:
 
   .:
@@ -22,11 +27,11 @@ importers:
         version: 0.185.1
       three-start:
         specifier: ^0.1.2
-        version: 0.1.2(@types/three@0.185.1)(eventemitter3@5.0.4)(three@0.185.1)
+        version: 0.1.2(@types/three@0.185.1(patch_hash=ca2ebc7aae4406ad321465c5cc27bbbc58caac907b41a8b0b0ebfd63beaf5d5f))(eventemitter3@5.0.4)(three@0.185.1)
     devDependencies:
       '@types/three':
         specifier: ^0.185.1
-        version: 0.185.1
+        version: 0.185.1(patch_hash=ca2ebc7aae4406ad321465c5cc27bbbc58caac907b41a8b0b0ebfd63beaf5d5f)
       typescript:
         specifier: ~7.0.2
         version: 7.0.2
@@ -586,7 +591,7 @@ snapshots:
 
   '@types/stats.js@0.17.4': {}
 
-  '@types/three@0.185.1':
+  '@types/three@0.185.1(patch_hash=ca2ebc7aae4406ad321465c5cc27bbbc58caac907b41a8b0b0ebfd63beaf5d5f)':
     dependencies:
       '@dimforge/rapier3d-compat': 0.12.0
       '@tweenjs/tween.js': 23.1.3
@@ -766,9 +771,9 @@ snapshots:
 
   source-map-js@1.2.1: {}
 
-  three-start@0.1.2(@types/three@0.185.1)(eventemitter3@5.0.4)(three@0.185.1):
+  three-start@0.1.2(@types/three@0.185.1(patch_hash=ca2ebc7aae4406ad321465c5cc27bbbc58caac907b41a8b0b0ebfd63beaf5d5f))(eventemitter3@5.0.4)(three@0.185.1):
     dependencies:
-      '@types/three': 0.185.1
+      '@types/three': 0.185.1(patch_hash=ca2ebc7aae4406ad321465c5cc27bbbc58caac907b41a8b0b0ebfd63beaf5d5f)
       eventemitter3: 5.0.4
       three: 0.185.1
 

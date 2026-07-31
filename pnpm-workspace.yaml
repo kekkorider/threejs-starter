@@ -1,0 +1,2 @@
+patchedDependencies:
+  '@types/three@0.185.1': patches/@types__three@0.185.1.patch
