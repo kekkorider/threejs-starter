@@ -2,7 +2,7 @@ import { Object3DBehaviour } from 'three-start'
 import { MotionType, rigidBody } from 'crashcat'
 
 import type * as THREE from 'three/webgpu'
-import type { RigidBody, Shape, World } from 'crashcat'
+import type { RigidBody, Shape, World, RigidBodySettings } from 'crashcat'
 
 type Params = {
   motionType?: number
@@ -61,9 +61,10 @@ export class Body extends Object3DBehaviour {
       shape: this.shape,
       position: this.object.position.clone().toArray(),
       quaternion: this.object.quaternion.clone().toArray(),
-      restitution: 0.2,
+      restitution: 0.65,
+      mass: 1,
       objectLayer: this.objectLayer as number,
-    })
+    } as RigidBodySettings)
   }
 
   createShape() {}

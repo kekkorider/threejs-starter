@@ -10,7 +10,7 @@ import { NormalMaterial } from './materials/normal'
 import { MatcapMaterial } from './materials/matcap'
 
 import { Spin } from './behaviors/Spin'
-import { BodyBox, BodySphere } from './behaviors/physics'
+import { BodyBox, BodySphere, BodyTriangle } from './behaviors/physics'
 
 //
 // Setup
@@ -56,10 +56,21 @@ addComponent(floor, BodyBox, { motionType: MotionType.STATIC })
 scene.add(floor)
 
 //
+// Suzanne GLB model
+//
+const suzanne = modules.assetLoader.models.get('suzanne')!.scene.getObjectByName('Suzanne') as THREE.Mesh
+suzanne.position.x = 1.5
+suzanne.geometry.scale(1.3, 1.3, 1.3)
+MatcapMaterial.matcap = modules.assetLoader.textures.get('diamond-07')!
+suzanne.material = MatcapMaterial
+addComponent(suzanne, BodyTriangle, { motionType: MotionType.DYNAMIC })
+scene.add(suzanne)
+
+//
 // Physics cube
 //
 const physicsCube = new THREE.Mesh(new THREE.BoxGeometry(0.75, 1, 1), NormalMaterial)
-physicsCube.position.x = -1
+physicsCube.position.x = -1.5
 physicsCube.position.z = -1
 physicsCube.rotation.z = Math.PI * Math.random()
 physicsCube.rotation.x = Math.PI * Math.random()
@@ -71,19 +82,8 @@ scene.add(physicsCube)
 // Physics sphere
 //
 const physicsSphere = new THREE.Mesh(new THREE.SphereGeometry(0.5), NormalMaterial)
-physicsSphere.position.x = 1
-physicsSphere.position.z = -1
+physicsSphere.position.x = 1.5
+physicsSphere.position.z = -1.5
 
 addComponent(physicsSphere, BodySphere, { motionType: MotionType.DYNAMIC })
 scene.add(physicsSphere)
-
-//
-// Suzanne GLB model
-//
-const suzanne = modules.assetLoader.models.get('suzanne')!.scene.getObjectByName('Suzanne') as THREE.Mesh
-addComponent(suzanne, Spin, { axis: 'z' })
-suzanne.position.x = 1.5
-suzanne.scale.setScalar(1.3)
-MatcapMaterial.matcap = modules.assetLoader.textures.get('diamond-07')!
-suzanne.material = MatcapMaterial
-scene.add(suzanne)
