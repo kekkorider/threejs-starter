@@ -10,7 +10,7 @@ import { NormalMaterial } from './materials/normal'
 import { MatcapMaterial } from './materials/matcap'
 
 import { Spin } from './behaviors/Spin'
-import { BodyBox, BodySphere, BodyTriangle } from './behaviors/physics'
+import { BodyBox, BodySphere, BodyConvexHull } from './behaviors/physics'
 
 //
 // Setup
@@ -63,7 +63,7 @@ suzanne.position.x = 1.5
 suzanne.geometry.scale(1.3, 1.3, 1.3)
 MatcapMaterial.matcap = modules.assetLoader.textures.get('diamond-07')!
 suzanne.material = MatcapMaterial
-addComponent(suzanne, BodyTriangle, { motionType: MotionType.DYNAMIC })
+addComponent(suzanne, BodyConvexHull, { motionType: MotionType.DYNAMIC })
 scene.add(suzanne)
 
 //
