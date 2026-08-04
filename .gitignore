@@ -25,3 +25,6 @@ dist-ssr
 
 public/draco/*
 !public/draco/.gitkeep
+
+public/basis/*
+!public/basis/.gitkeep

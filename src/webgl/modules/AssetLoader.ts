@@ -1,8 +1,16 @@
-import { LoadingManager, TextureLoader, type Texture, type DataTexture } from 'three/webgpu'
+import {
+  LoadingManager,
+  TextureLoader,
+  type Texture,
+  type DataTexture,
+  type CompressedTexture,
+  type WebGPURenderer
+} from 'three/webgpu'
 import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js'
 import { HDRLoader } from 'three/examples/jsm/loaders/HDRLoader.js'
 import { EXRLoader } from 'three/addons/loaders/EXRLoader.js'
+import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js'
 import { ContextModule } from "three-start"
 
 export class AssetLoaderModule extends ContextModule {
@@ -11,11 +19,13 @@ export class AssetLoaderModule extends ContextModule {
   private textureLoader: TextureLoader | null = null
   private hdrLoader: HDRLoader | null = null
   private exrLoader: EXRLoader | null = null
+  private ktxLoader: KTX2Loader | null = null
 
   private models: Map<string, GLTF> = new Map()
   private textures: Map<string, Texture> = new Map()
   private hdrs: Map<string, Texture> = new Map()
   private exrs: Map<string, Texture> = new Map()
+  private ktx: Map<string, Texture> = new Map()
 
   onAwake() {
     this.createLoadingManager()
@@ -52,6 +62,13 @@ export class AssetLoaderModule extends ContextModule {
 
   createExrLoader(): void {
     this.exrLoader = new EXRLoader(this.loadingManager as LoadingManager)
+  }
+
+  async createKTX2Loader(): Promise<void> {
+    this.ktxLoader = new KTX2Loader(this.loadingManager as LoadingManager)
+    this.ktxLoader.setTranscoderPath('/basis/')
+
+    this.ktxLoader.detectSupport(this.ctx.renderer! as WebGPURenderer)
   }
 
   /**
@@ -96,10 +113,33 @@ export class AssetLoaderModule extends ContextModule {
     return this.#loadEXR(resources) as Promise<DataTexture>
   }
 
-  #loadEXR(url: string): Promise<Texture> {
+  #loadEXR(url: string): Promise<DataTexture> {
     return new Promise((resolve, reject) => {
       this.exrLoader!.load(url, (texture) => {
         this.exrs.set(generateAssetName(url), texture)
+        return resolve(texture)
+      }, undefined, reject)
+    })
+  }
+
+  /**
+   * Load a single HDR texture or an array of HDR textures.
+   *
+   * @param resources Single URL or array of URLs of the model(s) to load.
+   */
+  loadKTX(resources: string): Promise<CompressedTexture>
+  loadKTX(resources: string[]): Promise<CompressedTexture[]>
+  async loadKTX(resources: string | string[]): Promise<CompressedTexture | CompressedTexture[]> {
+    if (Array.isArray(resources)) {
+      return Promise.all(resources.map(url => this.#loadKTX(url)) as Promise<CompressedTexture>[])
+    }
+    return this.#loadKTX(resources) as Promise<CompressedTexture>
+  }
+
+  #loadKTX(url: string): Promise<CompressedTexture> {
+    return new Promise((resolve, reject) => {
+      this.ktxLoader!.load(url, (texture) => {
+        this.ktx.set(generateAssetName(url), texture)
         return resolve(texture)
       }, undefined, reject)
     })
@@ -186,6 +226,15 @@ export class AssetLoaderModule extends ContextModule {
    */
   getEXR(name: string): DataTexture | undefined {
     return this.exrs.get(name) as DataTexture | undefined
+  }
+
+  /**
+   * Get a KTX texture by name.
+   *
+   * @param name The name of the KTX texture to get
+   */
+  getKTX(name: string): CompressedTexture | undefined {
+    return this.ktx.get(name) as CompressedTexture | undefined
   }
 
   /**

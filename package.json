@@ -7,10 +7,11 @@
     "node": "24"
   },
   "scripts": {
-    "dev": "pnpm copy-draco && vite",
-    "build": "pnpm copy-draco && tsc && vite build",
+    "dev": "pnpm copy-draco && pnpm copy-basis && vite",
+    "build": "pnpm copy-draco && pnpm copy-basis && tsc && vite build",
     "preview": "vite preview",
-    "copy-draco": "node scripts/copyDracoFiles.js"
+    "copy-draco": "node scripts/copyDracoFiles.js",
+    "copy-basis": "node scripts/copyBasisLib.js"
   },
   "devDependencies": {
     "@types/three": "^0.185.1",

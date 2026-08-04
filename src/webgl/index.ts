@@ -46,12 +46,12 @@ const starter = new ThreeStart()
 starter.addModules({
   assetLoader: new AssetLoaderModule(),
   orbitControls: new OrbitControlsModule(),
-  physics: new PhysicsModule(true),
+  physics: new PhysicsModule(false),
   inspector: new InspectorModule(),
   input: new InputModule(),
 })
 
-const { scene, camera, modules, scenePass, renderPipeline } = starter.ctx
+const { scene, renderer, camera, modules, scenePass, renderPipeline } = starter.ctx
 
 starter.start()
 starter.ctx.once(ThreeContextEvents.Mount, () => {
@@ -60,8 +60,13 @@ starter.ctx.once(ThreeContextEvents.Mount, () => {
 
 starter.mount(document.getElementById('app')! as HTMLDivElement)
 
+await renderer.init()
+
+modules.assetLoader.createKTX2Loader()
+
 await modules.assetLoader.loadTextures('/diamond-07.png')
 await modules.assetLoader.loadModels('/suzanne.glb')
+await modules.assetLoader.loadKTX('/2d_etc1s.ktx2')
 
 //
 // Camera
@@ -108,7 +113,10 @@ scene.add(suzanne)
 //
 // Physics cube
 //
-const physicsCube = new THREE.Mesh(new THREE.BoxGeometry(0.75, 1, 1), NormalMaterial)
+const physicsCubeMaterial = new THREE.MeshBasicNodeMaterial({
+  map: modules.assetLoader.getKTX('2d_etc1s')!
+})
+const physicsCube = new THREE.Mesh(new THREE.BoxGeometry(0.75, 1, 1), physicsCubeMaterial)
 physicsCube.position.x = -1.5
 physicsCube.position.y = 1.3
 physicsCube.position.z = -1
