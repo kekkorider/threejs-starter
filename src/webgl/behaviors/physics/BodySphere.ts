@@ -14,14 +14,29 @@ type GeometryParams = {
   widthSegments: number
 }
 
+export type BodyParams = {
+  radius: number
+}
+
 export class BodySphere extends Body {
-  constructor(settings: RigidBodySettings) {
+  bodyParams: BodyParams | undefined = undefined
+
+  constructor(settings: RigidBodySettings, bodyParams?: BodyParams) {
     super(settings)
+
+    if (bodyParams !== undefined) {
+      this.bodyParams = bodyParams
+    }
   }
 
   override createShape(): void {
     const { geometry } = this.object as THREE.Mesh
     const parameters = (geometry as THREE.SphereGeometry).parameters as GeometryParams
+
+
+    if (this.bodyParams) {
+      parameters.radius = this.bodyParams.radius
+    }
 
     const { radius } = parameters
 

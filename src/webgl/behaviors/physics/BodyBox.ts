@@ -13,14 +13,32 @@ type GeometryParams = {
   depthSegments: number
 }
 
+export type BodyParams = {
+  width: number
+  height: number
+  depth: number
+}
+
 export class BodyBox extends Body {
-  constructor(settings: RigidBodySettings) {
+  bodyParams: BodyParams | undefined = undefined
+
+  constructor(settings: RigidBodySettings, bodyParams?: BodyParams) {
     super(settings)
+
+    if (bodyParams !== undefined) {
+      this.bodyParams = bodyParams
+    }
   }
 
   override createShape(): void {
     const { geometry } = this.object as THREE.Mesh
     const parameters = (geometry as THREE.BoxGeometry).parameters as GeometryParams
+
+    if (this.bodyParams) {
+      parameters.width = this.bodyParams.width
+      parameters.height = this.bodyParams.height
+      parameters.depth = this.bodyParams.depth
+    }
 
     const width = parameters.width
     const height = parameters.height

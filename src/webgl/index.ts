@@ -29,7 +29,13 @@ import { MatcapMaterial } from './materials/matcap'
 import { ScaleMaterial } from './materials/scale'
 
 import { Spin } from './behaviors/Spin'
-import { BodyBox, BodySphere, BodyConvexHull } from './behaviors/physics'
+import {
+  BodyBox,
+  type BodyBoxParams,
+  BodySphere,
+  type BodySphereParams,
+  BodyConvexHull
+} from './behaviors/physics'
 
 //
 // Setup
@@ -102,6 +108,7 @@ scene.add(suzanne)
 //
 const physicsCube = new THREE.Mesh(new THREE.BoxGeometry(0.75, 1, 1), NormalMaterial)
 physicsCube.position.x = -1.5
+physicsCube.position.y = 1.3
 physicsCube.position.z = -1
 physicsCube.rotation.z = Math.PI * Math.random()
 physicsCube.rotation.x = Math.PI * Math.random()
@@ -111,7 +118,11 @@ addComponent(physicsCube, BodyBox, {
   restitution: 0.2,
   friction: 0.3,
   mass: 1
-} as RigidBodySettings)
+} as RigidBodySettings, {
+  width: 1,
+  height: 1.5,
+  depth: 1.5
+} as BodyBoxParams)
 scene.add(physicsCube)
 
 //
@@ -125,7 +136,9 @@ physicsSphere.position.z = -2.5
 addComponent(physicsSphere, BodySphere, {
   motionType: MotionType.DYNAMIC,
   restitution: .8
-} as RigidBodySettings)
+} as RigidBodySettings, {
+  radius: 0.6
+} as BodySphereParams)
 scene.add(physicsSphere)
 
 //
