@@ -23,6 +23,7 @@ import { AssetLoaderModule } from './modules/AssetLoader'
 import { OrbitControlsModule } from './modules/OrbitControls'
 import { PhysicsModule } from './modules/Physics'
 import { InspectorModule } from './modules/Inspector'
+import { InputModule } from './modules/Input'
 
 import { NormalMaterial } from './materials/normal'
 import { MatcapMaterial } from './materials/matcap'
@@ -47,6 +48,7 @@ starter.addModules({
   orbitControls: new OrbitControlsModule(),
   physics: new PhysicsModule(true),
   inspector: new InspectorModule(),
+  input: new InputModule(),
 })
 
 const { scene, camera, modules, scenePass, renderPipeline } = starter.ctx
