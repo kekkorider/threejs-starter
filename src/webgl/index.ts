@@ -46,7 +46,7 @@ const starter = new ThreeStart()
 starter.addModules({
   assetLoader: new AssetLoaderModule(),
   orbitControls: new OrbitControlsModule(),
-  physics: new PhysicsModule(false),
+  physics: new PhysicsModule(true),
   inspector: new InspectorModule(),
   input: new InputModule(),
 })
@@ -90,7 +90,11 @@ floor.position.y = -2
 
 addComponent(floor, BodyBox, {
   motionType: MotionType.STATIC,
-} as RigidBodySettings)
+} as RigidBodySettings, {
+  width: 10.2,
+  height: 0.52,
+  depth: 10.2
+} as BodyBoxParams)
 
 scene.add(floor)
 
@@ -125,13 +129,13 @@ physicsCube.rotation.x = Math.PI * Math.random()
 
 addComponent(physicsCube, BodyBox, {
   motionType: MotionType.DYNAMIC,
-  restitution: 0.2,
-  friction: 0.3,
+  restitution: 0.6,
+  friction: 0,
   mass: 1
 } as RigidBodySettings, {
   width: 1,
-  height: 1.5,
-  depth: 1.5
+  height: 1,
+  depth: 1
 } as BodyBoxParams)
 scene.add(physicsCube)
 
@@ -147,7 +151,7 @@ addComponent(physicsSphere, BodySphere, {
   motionType: MotionType.DYNAMIC,
   restitution: .8
 } as RigidBodySettings, {
-  radius: 0.6
+    radius: 0.55
 } as BodySphereParams)
 scene.add(physicsSphere)
 

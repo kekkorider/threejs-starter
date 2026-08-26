@@ -89,6 +89,7 @@ A body type can be assigned to a mesh as a three-start component
 import { addComponent } from 'three-start'
 import { BodyBox } from './behaviors/physics'
 
+import { type BodyParams as BodyBoxParams } from './behaviors/physics/BodyBox'
 import type { RigidBodySettings } from 'crashcat'
 
 // ...
@@ -98,12 +99,22 @@ const cube = new THREE.Mesh(
 	new THREE.MeshBasicMaterial({ color: 0x00ff00 }),
 )
 
-addComponent(cube, BodyBox, {
-	motionType: MotionType.DYNAMIC,
-	restitution: 0.2,
-	friction: 0.3,
-	mass: 1,
-} as RigidBodySettings)
+addComponent(
+	cube,
+	BodyBox,
+	{
+		motionType: MotionType.DYNAMIC,
+		restitution: 0.2,
+		friction: 0.3,
+		mass: 1,
+	} as RigidBodySettings,
+	{
+		width: 1,
+		height: 1,
+		depth: 1,
+	} as BodyBoxParams,
+)
+
 scene.add(cube)
 ```
 
