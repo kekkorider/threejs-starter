@@ -1,7 +1,7 @@
+import { Vector3, Quaternion, Mesh } from 'three/webgpu'
 import { Object3DBehaviour } from 'three-start'
 import { MotionType, rigidBody } from 'crashcat'
 
-import type * as THREE from 'three/webgpu'
 import type { RigidBody, Shape, World, RigidBodySettings } from 'crashcat'
 
 type Params = {
@@ -12,8 +12,12 @@ export class Body extends Object3DBehaviour {
   motionType: Params['motionType'] = MotionType.STATIC
   objectLayer: number | null = null
   body: RigidBody | null = null
-  bodyBias: number = 0.01
   shape: Shape | null = null
+  objectWorldPosition: Vector3 = new Vector3()
+  objectWorldQuaternion: Quaternion = new Quaternion()
+
+  private positionArray: [number, number, number] = [0, 0, 0]
+  private quaternionArray: [number, number, number, number] = [0, 0, 0, 1]
 
   settings: RigidBodySettings | null = null
 
@@ -33,14 +37,26 @@ export class Body extends Object3DBehaviour {
   onDestroy() {
     rigidBody.remove(this.ctx.modules.physics.world as World, this.body as RigidBody)
 
-    const { geometry } = this.object as THREE.Mesh
+    if (this.object instanceof Mesh) {
+      const { geometry } = this.object
+      geometry?.dispose()
+    }
 
-    geometry?.dispose()
     this.object.removeFromParent()
   }
 
   onUpdate() {
-    if (this.motionType === MotionType.STATIC) return
+    if (this.motionType === MotionType.DYNAMIC) {
+      return
+    }
+
+    this.syncFromObject()
+  }
+
+  onBeforeRender() {
+    if (this.motionType !== MotionType.DYNAMIC) {
+      return
+    }
 
     this.object.position.set(
       this.body!.position[0],
@@ -66,13 +82,16 @@ export class Body extends Object3DBehaviour {
                           OBJECT_LAYER_NOT_MOVING :
                           OBJECT_LAYER_MOVING
 
+    this.object.getWorldPosition(this.objectWorldPosition)
+    this.object.getWorldQuaternion(this.objectWorldQuaternion)
+
     this.body = rigidBody.create(
       this.ctx.modules.physics.world as World,
         {
         ...this.settings,
         shape: this.shape,
-        position: this.object.position.clone().toArray(),
-        quaternion: this.object.quaternion.clone().toArray(),
+        position: this.objectWorldPosition.toArray(this.positionArray),
+        quaternion: this.objectWorldQuaternion.toArray(this.quaternionArray),
         objectLayer,
         motionType: this.motionType,
       } as RigidBodySettings
@@ -80,4 +99,17 @@ export class Body extends Object3DBehaviour {
   }
 
   createShape() {}
+
+  private syncFromObject() {
+    this.object.getWorldPosition(this.objectWorldPosition)
+    this.object.getWorldQuaternion(this.objectWorldQuaternion)
+
+    rigidBody.setTransform(
+      this.ctx.modules.physics.world as World,
+      this.body as RigidBody,
+      this.objectWorldPosition.toArray(this.positionArray),
+      this.objectWorldQuaternion.toArray(this.quaternionArray),
+      false
+    )
+  }
 }
