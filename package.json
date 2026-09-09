@@ -1,7 +1,7 @@
 {
   "name": "threejs-starter",
   "private": true,
-  "version": "2.0.0",
+  "version": "2.0.1",
   "type": "module",
   "engines": {
     "node": "24"
@@ -14,15 +14,15 @@
     "copy-basis": "node scripts/copyBasisLib.js"
   },
   "devDependencies": {
-    "@types/three": "^0.185.1",
+    "@types/three": "^0.185.4",
     "typescript": "~7.0.2",
-    "vite": "^8.1.5"
+    "vite": "^8.2.2"
   },
   "dependencies": {
     "crashcat": "^0.0.5",
     "eventemitter3": "^5.0.4",
     "gsap": "^3.15.0",
-    "three": "^0.185.1",
-    "three-start": "^0.1.2"
+    "three": "^0.186.0",
+    "three-start": "^0.1.3"
   }
 }
