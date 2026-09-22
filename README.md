@@ -4,7 +4,7 @@ This is a general template for ThreeJS applications.
 It uses the following packages:
 
 - [ViteJS](https://vitejs.dev/) v8
-- [ThreeJS](https://threejs.org/) v0.185.1
+- [ThreeJS](https://threejs.org/) v0.186.0
 - [TypeScript](https://www.typescriptlang.org/) v7.0.2
 - [Crashcat](https://crashcat.dev/) v0.0.5
 

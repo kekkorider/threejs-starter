@@ -14,9 +14,9 @@
     "copy-basis": "node scripts/copyBasisLib.js"
   },
   "devDependencies": {
-    "@types/three": "^0.185.4",
+    "@types/three": "^0.186.0",
     "typescript": "~7.0.2",
-    "vite": "^8.2.2"
+    "vite": "^8.3.0"
   },
   "dependencies": {
     "crashcat": "^0.0.5",
