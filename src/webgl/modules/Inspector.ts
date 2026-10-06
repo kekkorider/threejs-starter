@@ -6,8 +6,8 @@ import type { ParametersGroup } from "three/examples/jsm/inspector/tabs/Paramete
 import { scale } from '../materials/scale'
 
 export class InspectorModule extends ContextModule {
-  inspector: Inspector | null = null
-  gui: ParametersGroup | null = null
+  inspector!: Inspector
+  gui!: ParametersGroup
 
   onAwake() {
     this.inspector = this.ctx.renderer.inspector = new Inspector()

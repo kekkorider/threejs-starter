@@ -29,6 +29,7 @@ import { NormalMaterial } from './materials/normal'
 import { MatcapMaterial } from './materials/matcap'
 import { ScaleMaterial } from './materials/scale'
 
+import { TransformControl } from './behaviors/TransformControls'
 import { Spin } from './behaviors/Spin'
 import {
   BodyBox,
@@ -79,7 +80,8 @@ camera.position.z = 5
 const cube = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), ScaleMaterial)
 addComponent(cube, Spin, { axis: 'y', speed: 1 })
 addComponent(cube, Spin, { axis: 'z', speed: 0.87 })
-cube.position.x = -1.5
+addComponent(cube, TransformControl)
+cube.position.set(-1.5, 0.5, 0)
 scene.add(cube)
 
 //

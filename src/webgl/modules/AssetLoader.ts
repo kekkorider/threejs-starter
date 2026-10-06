@@ -14,12 +14,12 @@ import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js'
 import { ContextModule } from "three-start"
 
 export class AssetLoaderModule extends ContextModule {
-  private loadingManager: LoadingManager | null = null
-  private gltfLoader: GLTFLoader | null = null
-  private textureLoader: TextureLoader | null = null
-  private hdrLoader: HDRLoader | null = null
-  private exrLoader: EXRLoader | null = null
-  private ktxLoader: KTX2Loader | null = null
+  private loadingManager!: LoadingManager
+  private gltfLoader!: GLTFLoader
+  private textureLoader!: TextureLoader
+  private hdrLoader!: HDRLoader
+  private exrLoader!: EXRLoader
+  private ktxLoader!: KTX2Loader
 
   private models: Map<string, GLTF> = new Map()
   private textures: Map<string, Texture> = new Map()
@@ -46,29 +46,29 @@ export class AssetLoaderModule extends ContextModule {
   }
 
   createTextureLoader(): void {
-    this.textureLoader = new TextureLoader(this.loadingManager as LoadingManager)
+    this.textureLoader = new TextureLoader(this.loadingManager)
   }
 
   createGltfLoader(): void {
-    this.gltfLoader = new GLTFLoader(this.loadingManager as LoadingManager)
+    this.gltfLoader = new GLTFLoader(this.loadingManager)
     const dracoLoader = new DRACOLoader()
     dracoLoader.setDecoderPath('/draco/')
     this.gltfLoader.setDRACOLoader(dracoLoader)
   }
 
   createHdrLoader(): void {
-    this.hdrLoader = new HDRLoader(this.loadingManager as LoadingManager)
+    this.hdrLoader = new HDRLoader(this.loadingManager)
   }
 
   createExrLoader(): void {
-    this.exrLoader = new EXRLoader(this.loadingManager as LoadingManager)
+    this.exrLoader = new EXRLoader(this.loadingManager)
   }
 
   async createKTX2Loader(): Promise<void> {
-    this.ktxLoader = new KTX2Loader(this.loadingManager as LoadingManager)
+    this.ktxLoader = new KTX2Loader(this.loadingManager)
     this.ktxLoader.setTranscoderPath('/basis/')
 
-    this.ktxLoader.detectSupport(this.ctx.renderer! as WebGPURenderer)
+    this.ktxLoader.detectSupport(this.ctx.renderer as WebGPURenderer)
   }
 
   /**

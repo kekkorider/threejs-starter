@@ -14,15 +14,15 @@ import { debugRenderer } from "crashcat/three"
 
 export class PhysicsModule extends ContextModule {
   isDebug: boolean = false
-  debugState: any | null = null
-  settings: WorldSettings | null = null
-  world: World | null = null
+  debugState!: debugRenderer.State
+  settings!: WorldSettings
+  world!: World
 
-  BROADPHASE_LAYER_MOVING: number | null = null
-  BROADPHASE_LAYER_NOT_MOVING: number | null = null
+  BROADPHASE_LAYER_MOVING!: number
+  BROADPHASE_LAYER_NOT_MOVING!: number
 
-  OBJECT_LAYER_MOVING: number | null = null
-  OBJECT_LAYER_NOT_MOVING: number | null = null
+  OBJECT_LAYER_MOVING!: number
+  OBJECT_LAYER_NOT_MOVING!: number
 
   constructor(isDebug: boolean = false) {
     super()
@@ -51,10 +51,10 @@ export class PhysicsModule extends ContextModule {
   }
 
   onUpdate() {
-    updateWorld(this.world as World, undefined, this.ctx.getDeltaTime() as number)
+    updateWorld(this.world, undefined, this.ctx.getDeltaTime())
 
     if (this.isDebug) {
-      debugRenderer.update(this.debugState, this.world as World)
+      debugRenderer.update(this.debugState, this.world)
     }
   }
 
