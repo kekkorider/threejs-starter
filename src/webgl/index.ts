@@ -65,9 +65,12 @@ await renderer.init()
 
 modules.assetLoader.createKTX2Loader()
 
-await modules.assetLoader.loadTextures('/diamond-07.png')
+await modules.assetLoader.loadTextures(['/diamond-07.png', '/m.png'], { colorSpace: THREE.SRGBColorSpace })
 await modules.assetLoader.loadModels('/suzanne.glb')
-await modules.assetLoader.loadKTX('/2d_etc1s.ktx2')
+await modules.assetLoader.loadKTX('/2d_etc1s.ktx2', {
+  flipY: false,
+  colorSpace: THREE.SRGBColorSpace,
+})
 
 //
 // Camera
@@ -106,7 +109,7 @@ scene.add(floor)
 const suzanne = modules.assetLoader.getModel('suzanne')!.scene.getObjectByName('Suzanne') as THREE.Mesh
 suzanne.position.x = 1.5
 suzanne.geometry.scale(1.3, 1.3, 1.3)
-MatcapMaterial.matcap = modules.assetLoader.getTexture('diamond-07')!
+MatcapMaterial.matcap = modules.assetLoader.getTexture('m')!
 suzanne.material = MatcapMaterial
 addComponent(suzanne, BodyConvexHull, {
   mass: 1,
@@ -120,8 +123,10 @@ scene.add(suzanne)
 // Physics cube
 //
 const physicsCubeMaterial = new THREE.MeshBasicNodeMaterial({
-  map: modules.assetLoader.getKTX('2d_etc1s')!
+  map: modules.assetLoader.getKTX('2d_etc1s')
 })
+
+console.log(physicsCubeMaterial.map)
 const physicsCube = new THREE.Mesh(new THREE.BoxGeometry(0.75, 1, 1), physicsCubeMaterial)
 physicsCube.position.x = -1.5
 physicsCube.position.y = 1.3
