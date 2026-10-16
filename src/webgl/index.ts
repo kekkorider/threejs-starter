@@ -29,7 +29,6 @@ import { NormalMaterial } from './materials/normal'
 import { MatcapMaterial } from './materials/matcap'
 import { ScaleMaterial } from './materials/scale'
 
-import { TransformControl } from './behaviors/TransformControls'
 import { Spin } from './behaviors/Spin'
 import {
   BodyBox,
@@ -42,7 +41,7 @@ import {
 //
 // Setup
 //
-const starter = new ThreeStart()
+export const starter = new ThreeStart()
 
 starter.addModules({
   assetLoader: new AssetLoaderModule(),
@@ -54,12 +53,20 @@ starter.addModules({
 
 const { scene, renderer, camera, modules, scenePass, renderPipeline } = starter.ctx
 
+let applyShading: (mode: 'shaded' | 'debug') => void = () => {}
+
+export function setViewportShading(mode: 'shaded' | 'debug'): void {
+  applyShading(mode)
+}
+
+export async function bootScene(container: HTMLDivElement): Promise<void> {
 starter.start()
+starter.ctx.modules.physics.debugState?.object3d && (starter.ctx.modules.physics.debugState.object3d.userData.editorHidden = true)
 starter.ctx.once(ThreeContextEvents.Mount, () => {
   createPostProcessing()
 })
 
-starter.mount(document.getElementById('app')! as HTMLDivElement)
+starter.mount(container)
 
 await renderer.init()
 
@@ -73,17 +80,12 @@ await modules.assetLoader.loadKTX('/2d_etc1s.ktx2', {
 })
 
 //
-// Camera
-//
-camera.position.z = 5
-
-//
 // Spinning cube
 //
 const cube = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), ScaleMaterial)
+cube.name = 'Cube'
 addComponent(cube, Spin, { axis: 'y', speed: 1 })
 addComponent(cube, Spin, { axis: 'z', speed: 0.87 })
-addComponent(cube, TransformControl)
 cube.position.set(-1.5, 0.5, 0)
 scene.add(cube)
 
@@ -91,6 +93,7 @@ scene.add(cube)
 // Floor
 //
 const floor = new THREE.Mesh(new THREE.BoxGeometry(10, 0.5, 10), NormalMaterial)
+floor.name = 'Floor'
 floor.position.y = -2
 
 addComponent(floor, BodyBox, {
@@ -107,6 +110,7 @@ scene.add(floor)
 // Suzanne GLB model
 //
 const suzanne = modules.assetLoader.getModel('suzanne')!.scene.getObjectByName('Suzanne') as THREE.Mesh
+suzanne.name = 'Suzanne'
 suzanne.position.x = 1.5
 suzanne.geometry.scale(1.3, 1.3, 1.3)
 MatcapMaterial.matcap = modules.assetLoader.getTexture('m')!
@@ -128,6 +132,7 @@ const physicsCubeMaterial = new THREE.MeshBasicNodeMaterial({
 
 console.log(physicsCubeMaterial.map)
 const physicsCube = new THREE.Mesh(new THREE.BoxGeometry(0.75, 1, 1), physicsCubeMaterial)
+physicsCube.name = 'PhysicsCube'
 physicsCube.position.x = -1.5
 physicsCube.position.y = 1.3
 physicsCube.position.z = -1
@@ -150,6 +155,7 @@ scene.add(physicsCube)
 // Physics sphere
 //
 const physicsSphere = new THREE.Mesh(new THREE.SphereGeometry(0.5), NormalMaterial)
+physicsSphere.name = 'PhysicsSphere'
 physicsSphere.position.x = 1
 physicsSphere.position.y = 2
 physicsSphere.position.z = -2.5
@@ -161,6 +167,12 @@ addComponent(physicsSphere, BodySphere, {
     radius: 0.55
 } as BodySphereParams)
 scene.add(physicsSphere)
+
+camera.position.set(6.2, 4.2, 7.4)
+camera.lookAt(0, 0.6, 0)
+modules.orbitControls.controls.target.set(0, 0.6, 0)
+modules.orbitControls.controls.update()
+}
 
 //
 // Post-processing and Inspector
@@ -179,13 +191,17 @@ function createPostProcessing(): void {
   const scenePassNormal = scenePass.getTextureNode('normal').toInspector('Normal')
   const scenePassVelocity = scenePass.getTextureNode('velocity').toInspector('Velocity')
 
-  const outputNode = Fn(() => {
+  const debugNode = Fn(() => {
     const top = mix(scenePassColor.renderOutput(), scenePassDepth.step(1), step(0.5, screenUV.x))
     const bottom = mix(scenePassNormal, scenePassVelocity, step(0.5, screenUV.x))
     const out = mix(top, bottom, step(0.5, screenUV.y))
 
     return out
-  })
+  })()
 
-  renderPipeline.outputNode = outputNode()
+  const shadedNode = scenePassColor.renderOutput()
+  applyShading = (mode) => {
+    renderPipeline.outputNode = mode === 'debug' ? debugNode : shadedNode
+  }
+  applyShading('shaded')
 }

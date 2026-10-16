@@ -1,0 +1,47 @@
+/** 16px icons in the flat style of the Godot 4 editor. */
+export function icon(name: string): string {
+  const body = PATHS[name] ?? PATHS.node
+  return `<svg class="ico" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">${body}</svg>`
+}
+
+const PATHS: Record<string, string> = {
+  node: `<circle cx="8" cy="8" r="2.2" fill="currentColor"/><path d="M8 1.5v3M8 11.5v3M1.5 8h3M11.5 8h3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>`,
+  mesh: `<path fill="currentColor" d="M8 1.4 14.2 5v6L8 14.6 1.8 11V5L8 1.4Zm0 1.7L3.4 6.1v3.8L8 13l4.6-3.1V6.1L8 3.1ZM8 6.2l3.2 1.9L8 10 4.8 8.1 8 6.2Z"/>`,
+  light: `<circle cx="8" cy="8" r="2.3" fill="currentColor"/><path d="M8 1.4v2M8 12.6v2M1.4 8h2M12.6 8h2M3.2 3.2l1.4 1.4M11.4 11.4l1.4 1.4M12.8 3.2l-1.4 1.4M4.6 11.4l-1.4 1.4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>`,
+  'light-dir': `<path fill="currentColor" d="M2 3.2h8.2v1.6H2z"/><path d="M3 6.2 8 13.2 13 6.2" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>`,
+  'light-omni': `<circle cx="8" cy="6.2" r="2.4" fill="currentColor"/><path d="M8 8.6v5.2M5.6 12.4h4.8" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>`,
+  'light-spot': `<path fill="currentColor" d="M7 1.8h2v2.2H7z"/><path d="M8 4.2 3.2 13.2h9.6L8 4.2Z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>`,
+  'light-hemi': `<path fill="currentColor" d="M3 9.2a5 5 0 0 1 10 0H3Z"/><path d="M2.2 9.4h11.6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>`,
+  add: `<path d="M8 2.5v11M2.5 8h11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>`,
+  duplicate: `<rect x="4.2" y="4.2" width="8" height="8" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M3.8 11.2V3.6c0-.6.4-1 1-1h7.6" fill="none" stroke="currentColor" stroke-width="1.3"/>`,
+  delete: `<path d="M3 4.2h10M6.2 4.1V2.8h3.6v1.3M4.4 4.2l.6 9h6l.6-9" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>`,
+  search: `<circle cx="7" cy="7" r="3.4" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M9.6 9.6 13 13" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>`,
+  select: `<path d="M3.2 2.2 3.4 13l3-2.6 1.8 3.2 1.6-.9-1.8-3.2h3.6L3.2 2.2Z" fill="currentColor"/>`,
+  move: `<path d="M8 1.6v12.8M8 1.6 5.8 3.8M8 1.6l2.2 2.2M8 14.4l-2.2-2.2M8 14.4l2.2-2.2M1.6 8h12.8M1.6 8l2.2-2.2M1.6 8l2.2 2.2M14.4 8l-2.2-2.2M14.4 8l-2.2 2.2" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>`,
+  rotate: `<path d="M12.6 6.2A4.8 4.8 0 1 0 13 9.2" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M12.6 3.2v3.2H9.4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>`,
+  scale: `<path d="M3 13 13 3M3 13h4M3 13V9M13 3H9M13 3v4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>`,
+  play: `<path d="M5 3.2v9.6l8-4.8-8-4.8Z" fill="currentColor"/>`,
+  pause: `<path d="M4.2 3h2.4v10H4.2zM9.4 3h2.4v10H9.4z" fill="currentColor"/>`,
+  stop: `<rect x="3.6" y="3.6" width="8.8" height="8.8" rx="1" fill="currentColor"/>`,
+  'screen-2d': `<rect x="2" y="3" width="12" height="10" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M2 6.2h12" stroke="currentColor" stroke-width="1.3"/>`,
+  'screen-3d': `<path d="M8 2.2 13.2 5v6L8 13.8 2.8 11V5L8 2.2Z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>`,
+  script: `<path d="M4 2.2h6.2L13 5v8.8H4V2.2Z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M10 2.4V5.2H13M6 8h4M6 10.4h3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>`,
+  game: `<rect x="2" y="5" width="12" height="7.2" rx="2" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M5 8.6h2.4M6.2 7.4v2.4M11 8h.1M12.4 9.4h.1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>`,
+  asset: `<path d="M2.4 6.2 8 3.2l5.6 3L8 9.2 2.4 6.2Z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M2.4 9.2 8 12.2l5.6-3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>`,
+  folder: `<path fill="currentColor" d="M1.6 4.2c0-.7.5-1.2 1.2-1.2h3l1.2 1.3h6.2c.7 0 1.2.5 1.2 1.2v6.2c0 .7-.5 1.2-1.2 1.2H2.8c-.7 0-1.2-.5-1.2-1.2V4.2Z"/>`,
+  scene: `<path d="M3 2.4h7.2L13 5.2v8.4H3V2.4Z" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M10 2.6v3h2.8" stroke="currentColor" stroke-width="1.3"/>`,
+  material: `<path fill="currentColor" d="M8 1.8 13.4 5v6L8 14.2 2.6 11V5L8 1.8Z"/>`,
+  meshfile: `<path d="M8 1.6 14 8 8 14.4 2 8 8 1.6Z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>`,
+  world: `<circle cx="8" cy="8" r="5.4" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M2.8 8h10.4M8 2.6c1.6 1.6 2.4 3.4 2.4 5.4S9.6 11.8 8 13.4C6.4 11.8 5.6 10 5.6 8S6.4 4.2 8 2.6Z" fill="none" stroke="currentColor" stroke-width="1.2"/>`,
+  local: `<path d="M3 13V3h2.2M3 13h10" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M8.2 8.6 12.4 4.4M12.4 4.4H9.4M12.4 4.4v3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>`,
+  snap: `<path d="M3 8.2 6.2 11.4 13 4.2" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>`,
+  chevron: `<path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>`,
+  'chevron-down': `<path d="M3.5 6 8 10.5 12.5 6" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>`,
+  close: `<path d="M3.5 3.5 12.5 12.5M12.5 3.5 3.5 12.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>`,
+  expand: `<path d="M9 2.5h4.5V7M7 13.5H2.5V9M14 2.5 9.2 7.3M2.5 13.5 7.3 8.7" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>`,
+  help: `<circle cx="8" cy="8" r="5.6" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M6.2 6.3a1.8 1.8 0 0 1 3.4.8c0 1.2-1.6 1.5-1.6 2.6" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="8" cy="11.4" r="0.7" fill="currentColor"/>`,
+  back: `<path d="M10 3.2 5.2 8 10 12.8" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>`,
+  forward: `<path d="M6 3.2 10.8 8 6 12.8" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>`,
+  eye: `<path d="M1.6 8S4 4.2 8 4.2 14.4 8 14.4 8 12 11.8 8 11.8 1.6 8 1.6 8Z" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="8" cy="8" r="1.6" fill="currentColor"/>`,
+  menu: `<path d="M3 4.2h10M3 8h10M3 11.8h10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>`,
+}
