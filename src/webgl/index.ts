@@ -59,7 +59,33 @@ export function setViewportShading(mode: 'shaded' | 'debug'): void {
   applyShading(mode)
 }
 
-export async function bootScene(container: HTMLDivElement): Promise<void> {
+let bootPromise: Promise<void> | null = null
+
+/** Boot the scene once, then move the same canvas into whichever route is showing. */
+export function bootScene(container: HTMLDivElement): Promise<void> {
+  if (!bootPromise) {
+    bootPromise = bootOnce(container)
+    return bootPromise
+  }
+  return bootPromise.then(() => {
+    remountScene(container)
+  })
+}
+
+/** Drop the canvas only if this container still owns it. */
+export function releaseScene(container: HTMLDivElement): void {
+  if (!starter.ctx.isMounted) return
+  if (starter.ctx.canvasContainer !== container) return
+  starter.unmount()
+}
+
+function remountScene(container: HTMLDivElement): void {
+  if (starter.ctx.canvasContainer === container) return
+  if (starter.ctx.isMounted) starter.unmount()
+  starter.mount(container)
+}
+
+async function bootOnce(container: HTMLDivElement): Promise<void> {
 starter.start()
 starter.ctx.modules.physics.debugState?.object3d && (starter.ctx.modules.physics.debugState.object3d.userData.editorHidden = true)
 starter.ctx.once(ThreeContextEvents.Mount, () => {
@@ -172,6 +198,13 @@ camera.position.set(6.2, 4.2, 7.4)
 camera.lookAt(0, 0.6, 0)
 modules.orbitControls.controls.target.set(0, 0.6, 0)
 modules.orbitControls.controls.update()
+
+const hideProfiler = () => {
+  try { starter.ctx.modules.inspector.inspector.setVisible(false) } catch { /* mounts lazily */ }
+}
+hideProfiler()
+requestAnimationFrame(hideProfiler)
+setTimeout(hideProfiler, 400)
 }
 
 //

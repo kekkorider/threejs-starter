@@ -1,16 +1,10 @@
+import { createPinia } from 'pinia'
+import { createApp } from 'vue'
+import App from './editor/App.vue'
+import { router } from './editor/router'
 import './style.css'
-import './editor/editor.css'
-import { GameEditor } from './editor/editor'
-import { bootScene, starter } from './webgl'
 
-const app = document.querySelector<HTMLDivElement>('#app')
+const app = document.querySelector('#app')
 if (!app) throw new Error('Missing #app')
 
-const editor = new GameEditor()
-editor.mount(app)
-
-bootScene(editor.viewport).then(() => {
-  editor.attach(starter)
-}).catch((error: unknown) => {
-  editor.failBoot(error)
-})
+createApp(App).use(createPinia()).use(router).mount(app)

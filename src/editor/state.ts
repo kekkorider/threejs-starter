@@ -117,7 +117,10 @@ export class EditorState {
   groundY = 0
   logs: LogLine[] = []
   controls: TransformControls | null = null
+  /** Editor gizmos, grid, and selection are hidden on the plain scene route. */
+  chromeVisible = false
 
+  private attached = false
   private scene: THREE.Scene | null = null
   private camera: THREE.PerspectiveCamera | null = null
   private grid: THREE.GridHelper | null = null
@@ -137,7 +140,13 @@ export class EditorState {
     if (this.logs.length > 200) this.logs.shift()
   }
 
-  attach(starter: ThreeStart): void {
+  attach(starter: ThreeStart): boolean {
+    if (this.attached) {
+      this.setChromeVisible(true)
+      return false
+    }
+    this.attached = true
+    this.chromeVisible = true
     this.starter = starter
     const { scene, camera, renderer } = starter.ctx
     this.scene = scene
@@ -196,6 +205,21 @@ export class EditorState {
     setTimeout(hideProfiler, 400)
 
     this.log('Editor ready. Create a MeshInstance3D to define a geometry and a TSL material.')
+    return true
+  }
+
+  /** Hide the grid, gizmo, and selection box when the editor route is not showing. */
+  setChromeVisible(visible: boolean): void {
+    this.chromeVisible = visible
+    if (this.grid) this.grid.visible = visible && !this.playing
+    if (!this.controls) return
+    if (!visible) {
+      this.controls.detach()
+      if (this.selectionHelper) this.selectionHelper.visible = false
+      return
+    }
+    this.syncGizmo()
+    this.updateSelectionBox()
   }
 
   selected(): EditorNode | null {
@@ -231,7 +255,7 @@ export class EditorState {
 
   setPlaying(playing: boolean): void {
     this.playing = playing
-    if (this.grid) this.grid.visible = !playing
+    if (this.grid) this.grid.visible = !playing && this.chromeVisible
     if (playing) this.controls?.detach()
     else this.syncGizmo()
     this.updateSelectionBox()
@@ -640,7 +664,7 @@ export class EditorState {
   }
 
   private onFrame(): void {
-    if (this.playing) return
+    if (this.playing || !this.chromeVisible) return
     this.updateSelectionBox()
     for (const node of this.nodes.values()) {
       if (node.kind === 'DirectionalLight3D' || node.kind === 'SpotLight3D') this.aimLight(node.object)
