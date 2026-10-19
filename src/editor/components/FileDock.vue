@@ -24,10 +24,10 @@ const empty = computed(() => !showScene.value && meshes.value.length === 0 && ma
 
 <template>
   <section class="dock files-dock">
-    <div class="dock-title">FileSystem</div>
+    <div class="dock-title">File system</div>
     <input v-model="store.fileFilter" class="filter file-filter" placeholder="Filter files" />
     <div class="tree files">
-      <div v-if="empty" class="empty-note">No resources yet. Create a MeshInstance3D.</div>
+      <div v-if="empty" class="empty-note">No resources yet. Create a MeshInstance.</div>
       <div
         v-if="showScene"
         class="file-row"

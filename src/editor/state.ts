@@ -9,7 +9,6 @@ import {
   clampParam,
   defaultParams,
   geometryEntry,
-  restOffset,
   type GeometryType,
 } from './geometry'
 import {
@@ -93,12 +92,36 @@ export interface CreateLightOptions {
 }
 
 const NODE_LABEL: Record<NodeKind, string> = {
-  Node3D: 'Node3D',
-  MeshInstance3D: 'MeshInstance3D',
-  DirectionalLight3D: 'DirectionalLight3D',
-  OmniLight3D: 'OmniLight3D',
-  SpotLight3D: 'SpotLight3D',
-  HemisphereLight3D: 'HemisphereLight3D',
+  Node3D: 'Node',
+  MeshInstance3D: 'MeshInstance',
+  DirectionalLight3D: 'DirectionalLight',
+  OmniLight3D: 'OmniLight',
+  SpotLight3D: 'SpotLight',
+  HemisphereLight3D: 'HemisphereLight',
+}
+
+export type ShadowTypeName = 'basic' | 'pcf' | 'vsm'
+
+export interface SceneSettings {
+  background: string
+  backgroundIntensity: number
+  environmentIntensity: number
+  shadows: boolean
+  shadowType: ShadowTypeName
+}
+
+export interface GridSettings {
+  visible: boolean
+  size: number
+  divisions: number
+  center: string
+  color: string
+}
+
+const SHADOW_TYPE: Record<ShadowTypeName, THREE.ShadowMapType> = {
+  basic: THREE.BasicShadowMap,
+  pcf: THREE.PCFShadowMap,
+  vsm: THREE.VSMShadowMap,
 }
 
 export class EditorState {
@@ -115,6 +138,11 @@ export class EditorState {
   playing = false
   paused = false
   groundY = 0
+  gridVisible = true
+  gridSize = 40
+  gridDivisions = 40
+  gridCenter = '#8a8a8a'
+  gridColor = '#2a2a2a'
   logs: LogLine[] = []
   controls: TransformControls | null = null
   /** Editor gizmos, grid, and selection are hidden on the plain scene route. */
@@ -173,10 +201,9 @@ export class EditorState {
       if (!bounds.isEmpty()) this.groundY = bounds.max.y
     }
 
-    this.grid = new THREE.GridHelper(40, 40, 0x8a8a8a, 0x2a2a2a)
-    this.grid.position.y = this.groundY
-    this.grid.userData.editorHidden = true
-    scene.add(this.grid)
+    this.rebuildGrid()
+    renderer.shadowMap.enabled = true
+    renderer.shadowMap.type = THREE.PCFShadowMap
 
     this.selectionHelper = new THREE.Box3Helper(this.selectionBounds, 0x569eff)
     this.selectionHelper.userData.editorHidden = true
@@ -204,14 +231,14 @@ export class EditorState {
     requestAnimationFrame(hideProfiler)
     setTimeout(hideProfiler, 400)
 
-    this.log('Editor ready. Create a MeshInstance3D to define a geometry and a TSL material.')
+    this.log('Editor ready. Create a MeshInstance to define a geometry and a TSL material.')
     return true
   }
 
   /** Hide the grid, gizmo, and selection box when the editor route is not showing. */
   setChromeVisible(visible: boolean): void {
     this.chromeVisible = visible
-    if (this.grid) this.grid.visible = visible && !this.playing
+    this.applyGridVisibility()
     if (!this.controls) return
     if (!visible) {
       this.controls.detach()
@@ -220,6 +247,86 @@ export class EditorState {
     }
     this.syncGizmo()
     this.updateSelectionBox()
+  }
+
+  sceneSettings(): SceneSettings {
+    const scene = this.scene
+    const background = scene?.background
+    const color = background instanceof THREE.Color ? `#${background.getHexString()}` : '#3a3a3a'
+    const shadow = this.starter?.ctx.renderer.shadowMap
+    return {
+      background: color,
+      backgroundIntensity: scene?.backgroundIntensity ?? 1,
+      environmentIntensity: scene?.environmentIntensity ?? 1,
+      shadows: shadow?.enabled ?? false,
+      shadowType: shadowTypeName(shadow?.type),
+    }
+  }
+
+  gridSettings(): GridSettings {
+    return {
+      visible: this.gridVisible,
+      size: this.gridSize,
+      divisions: this.gridDivisions,
+      center: this.gridCenter,
+      color: this.gridColor,
+    }
+  }
+
+  setBackground(color: string): void {
+    const scene = this.scene
+    if (!scene) return
+    if (scene.background instanceof THREE.Color) scene.background.set(color)
+    else scene.background = new THREE.Color(color)
+  }
+
+  setBackgroundIntensity(value: number): void {
+    if (!this.scene || !Number.isFinite(value)) return
+    this.scene.backgroundIntensity = Math.max(0, value)
+  }
+
+  setEnvironmentIntensity(value: number): void {
+    if (!this.scene || !Number.isFinite(value)) return
+    this.scene.environmentIntensity = Math.max(0, value)
+  }
+
+  setShadows(enabled: boolean): void {
+    const shadow = this.starter?.ctx.renderer.shadowMap
+    if (!shadow) return
+    shadow.enabled = enabled
+  }
+
+  setShadowType(name: ShadowTypeName): void {
+    const shadow = this.starter?.ctx.renderer.shadowMap
+    if (!shadow) return
+    shadow.type = SHADOW_TYPE[name]
+  }
+
+  setGridVisible(visible: boolean): void {
+    this.gridVisible = visible
+    this.applyGridVisibility()
+  }
+
+  setGridSize(value: number): void {
+    if (!Number.isFinite(value)) return
+    this.gridSize = Math.min(400, Math.max(1, value))
+    this.rebuildGrid()
+  }
+
+  setGridDivisions(value: number): void {
+    if (!Number.isFinite(value)) return
+    this.gridDivisions = Math.min(200, Math.max(1, Math.round(value)))
+    this.rebuildGrid()
+  }
+
+  setGridCenter(color: string): void {
+    this.gridCenter = color
+    this.rebuildGrid()
+  }
+
+  setGridColor(color: string): void {
+    this.gridColor = color
+    this.rebuildGrid()
   }
 
   selected(): EditorNode | null {
@@ -255,7 +362,7 @@ export class EditorState {
 
   setPlaying(playing: boolean): void {
     this.playing = playing
-    if (this.grid) this.grid.visible = !playing && this.chromeVisible
+    this.applyGridVisibility()
     if (playing) this.controls?.detach()
     else this.syncGizmo()
     this.updateSelectionBox()
@@ -310,7 +417,7 @@ export class EditorState {
   createNode3D(parentId?: string | null, name?: string): EditorNode {
     const parent = this.parentOrSelected(parentId)
     const object = new THREE.Group()
-    object.name = this.uniqueName(name?.trim() || 'Node3D')
+    object.name = this.uniqueName(name?.trim() || 'Node')
     parent.object.add(object)
     const node = this.addNode(object, parent.id, 'Node3D', false)
     this.log(`Added ${node.name}`)
@@ -332,10 +439,12 @@ export class EditorState {
     }
 
     const mesh = new THREE.Mesh(geometryResource.geometry, materialResource.material)
-    mesh.name = this.uniqueName(options.name?.trim() || 'MeshInstance3D')
+    mesh.name = this.uniqueName(options.name?.trim() || 'MeshInstance')
     mesh.castShadow = true
     mesh.receiveShadow = true
-    mesh.position.copy(this.spawnPoint(restOffset(options.geometryType, options.params)))
+    mesh.position.set(0, 0, 0)
+    mesh.rotation.set(0, 0, 0)
+    mesh.scale.set(1, 1, 1)
     parent.object.add(mesh)
 
     const node = this.addNode(mesh, parent.id, 'MeshInstance3D', false)
@@ -711,6 +820,30 @@ export class EditorState {
     helper.visible = true
   }
 
+  private applyGridVisibility(): void {
+    if (!this.grid) return
+    this.grid.visible = this.gridVisible && this.chromeVisible && !this.playing
+    this.grid.position.set(0, 0, 0)
+  }
+
+  private rebuildGrid(): void {
+    const scene = this.scene
+    if (!scene) return
+    if (this.grid) {
+      scene.remove(this.grid)
+      this.grid.geometry.dispose()
+      const materials = Array.isArray(this.grid.material) ? this.grid.material : [this.grid.material]
+      for (const material of materials) material.dispose()
+    }
+    const grid = new THREE.GridHelper(this.gridSize, this.gridDivisions, this.gridCenter, this.gridColor)
+    grid.position.set(0, 0, 0)
+    grid.userData.editorHidden = true
+    grid.raycast = () => {}
+    this.grid = grid
+    scene.add(grid)
+    this.applyGridVisibility()
+  }
+
   private installEnvironment(renderer: THREE.Renderer): void {
     const scene = this.scene
     if (!scene) return
@@ -735,9 +868,9 @@ export class EditorState {
 
   private addDefaultLights(world: THREE.Group): void {
     const hemi = new THREE.HemisphereLight('#e7eefc', '#3c342c', 0.45)
-    hemi.name = 'HemisphereLight3D'
+    hemi.name = 'HemisphereLight'
     const sun = new THREE.DirectionalLight('#fff4e4', 2.4)
-    sun.name = 'DirectionalLight3D'
+    sun.name = 'DirectionalLight'
     sun.position.set(6, 10, 4)
     sun.castShadow = true
     sun.lookAt(0, 0, 0)
@@ -941,6 +1074,12 @@ export class EditorState {
   }
 }
 
+function shadowTypeName(type: THREE.ShadowMapType | undefined): ShadowTypeName {
+  if (type === THREE.BasicShadowMap) return 'basic'
+  if (type === THREE.VSMShadowMap) return 'vsm'
+  return 'pcf'
+}
+
 function kindOf(object: THREE.Object3D): NodeKind | null {
   const tagged = object.userData.editorKind as NodeKind | undefined
   if (tagged) return tagged
@@ -956,44 +1095,44 @@ function kindOf(object: THREE.Object3D): NodeKind | null {
 export const NODE_TYPES: { kind: NodeKind, label: string, group: string, description: string, inherits: string }[] = [
   {
     kind: 'Node3D',
-    label: 'Node3D',
+    label: 'Node',
     group: 'Node',
-    description: 'An empty 3D node. Use it to group meshes, lights, and other nodes. It has a transform and nothing else.',
-    inherits: 'Node3D < Node',
+    description: 'An empty node. Use it to group meshes, lights, and other nodes. It has a transform and nothing else.',
+    inherits: 'Node',
   },
   {
     kind: 'MeshInstance3D',
-    label: 'MeshInstance3D',
-    group: 'Node3D',
-    description: 'A 3D object that draws a mesh. Pick a geometry, write a TSL material, and add it to the scene.',
-    inherits: 'MeshInstance3D < GeometryInstance3D < Node3D',
+    label: 'MeshInstance',
+    group: 'Mesh',
+    description: 'A mesh drawn with a geometry and a TSL material.',
+    inherits: 'MeshInstance < Node',
   },
   {
     kind: 'DirectionalLight3D',
-    label: 'DirectionalLight3D',
-    group: 'Light3D',
+    label: 'DirectionalLight',
+    group: 'Light',
     description: 'A distant light with parallel rays. Rotate it to aim. It lights MeshStandardNodeMaterial surfaces.',
-    inherits: 'DirectionalLight3D < Light3D < Node3D',
+    inherits: 'DirectionalLight < Light < Node',
   },
   {
     kind: 'OmniLight3D',
-    label: 'OmniLight3D',
-    group: 'Light3D',
+    label: 'OmniLight',
+    group: 'Light',
     description: 'A point light that emits in every direction, out to a finite range.',
-    inherits: 'OmniLight3D < Light3D < Node3D',
+    inherits: 'OmniLight < Light < Node',
   },
   {
     kind: 'SpotLight3D',
-    label: 'SpotLight3D',
-    group: 'Light3D',
+    label: 'SpotLight',
+    group: 'Light',
     description: 'A cone of light. Rotate the node to aim it and set the cone angle in the inspector.',
-    inherits: 'SpotLight3D < Light3D < Node3D',
+    inherits: 'SpotLight < Light < Node',
   },
   {
     kind: 'HemisphereLight3D',
-    label: 'HemisphereLight3D',
-    group: 'Light3D',
+    label: 'HemisphereLight',
+    group: 'Light',
     description: 'Sky and ground colors used as soft ambient fill. It has no position.',
-    inherits: 'HemisphereLight3D < Light3D < Node3D',
+    inherits: 'HemisphereLight < Light < Node',
   },
 ]

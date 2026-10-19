@@ -81,7 +81,7 @@ onBeforeUnmount(() => {
         <SceneDock />
         <div
           class="splitter h"
-          @pointerdown="onSplit($event, 'y', (delta) => { metrics.files = clamp(metrics.files + delta, 90, 420) })"
+          @pointerdown="onSplit($event, 'y', (delta) => { metrics.files = clamp(metrics.files - delta, 90, 420) })"
         />
         <FileDock />
       </aside>
@@ -102,10 +102,6 @@ onBeforeUnmount(() => {
         <div class="center-body">
           <div class="stage">
             <Viewport />
-            <div class="placeholder screen-2d">
-              <h2>2D</h2>
-              <p>This scene has no 2D nodes. MeshInstance3D objects are created and edited in the 3D workspace.</p>
-            </div>
             <div id="script-code-host" class="placeholder script-stage screen-script" />
             <AssetLibrary />
           </div>

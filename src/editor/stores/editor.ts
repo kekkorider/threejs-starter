@@ -5,11 +5,11 @@ import { ThreeContextEvents } from 'three-start'
 import type { ThreeStart } from 'three-start'
 import { GEOMETRY_CATALOG, triangleCount, type GeometryType } from '../geometry'
 import type { NodeKind, ToolMode } from '../state'
-import { EditorState, NODE_TYPES, type EditorNode, type LogLine } from '../state'
+import { EditorState, NODE_TYPES, type EditorNode, type GridSettings, type LogLine, type SceneSettings, type ShadowTypeName } from '../state'
 import { DEFAULT_FLAGS, TSL_PRESETS, matchingPresetId, type MaterialSide } from '../tsl'
 import { setViewportShading } from '../../webgl'
 
-export type ScreenName = '2d' | '3d' | 'script' | 'game' | 'asset'
+export type ScreenName = '3d' | 'script' | 'game' | 'asset'
 
 export interface MenuItem {
   label: string
@@ -172,6 +172,16 @@ export const useEditorStore = defineStore('editor', () => {
     const node = engine.nodes.get(id)
     if (!node) return null
     return describe(node)
+  })
+
+  const sceneSettings = computed((): SceneSettings => {
+    void revision.value
+    return engine.sceneSettings()
+  })
+
+  const gridSettings = computed((): GridSettings => {
+    void revision.value
+    return engine.gridSettings()
   })
 
   function describe(node: EditorNode): InspectorView {
@@ -504,6 +514,56 @@ export const useEditorStore = defineStore('editor', () => {
     touch()
   }
 
+  function setBackground(color: string): void {
+    engine.setBackground(color)
+    touch()
+  }
+
+  function setBackgroundIntensity(value: number): void {
+    engine.setBackgroundIntensity(value)
+    touch()
+  }
+
+  function setEnvironmentIntensity(value: number): void {
+    engine.setEnvironmentIntensity(value)
+    touch()
+  }
+
+  function setShadows(enabled: boolean): void {
+    engine.setShadows(enabled)
+    touch()
+  }
+
+  function setShadowType(name: ShadowTypeName): void {
+    engine.setShadowType(name)
+    touch()
+  }
+
+  function setGridVisible(visible: boolean): void {
+    engine.setGridVisible(visible)
+    touch()
+  }
+
+  function setGridSize(value: number): void {
+    engine.setGridSize(value)
+    touch()
+  }
+
+  function setGridDivisions(value: number): void {
+    engine.setGridDivisions(value)
+    touch()
+  }
+
+  function setGridCenter(color: string): void {
+    engine.setGridCenter(color)
+    touch()
+  }
+
+  function setGridColor(color: string): void {
+    engine.setGridColor(color)
+    touch()
+  }
+
   function setGeometryType(id: string, type: GeometryType): void {
     engine.setGeometryType(id, type)
     touch()
@@ -653,7 +713,7 @@ export const useEditorStore = defineStore('editor', () => {
     const user = engine.usersOfMaterial(id)[0]
     if (user) select(user.id)
     else syncMaterial(true, id)
-    if (screen.value === '2d' || screen.value === 'asset') setScreen('3d')
+    if (screen.value === 'asset') setScreen('3d')
     bottomTab.value = 'tsl'
   }
 
@@ -665,7 +725,7 @@ export const useEditorStore = defineStore('editor', () => {
   function applyAssetPreset(presetId: string): void {
     const node = engine.selected()
     if (!node || node.kind !== 'MeshInstance3D') {
-      engine.log('Select a MeshInstance3D to apply this material.', 'warn')
+      engine.log('Select a MeshInstance to apply this material.', 'warn')
       logs.value = engine.logs.slice()
       bottomTab.value = 'output'
       return
@@ -901,6 +961,8 @@ export const useEditorStore = defineStore('editor', () => {
     geometryFiles,
     materialFiles,
     selected,
+    sceneSettings,
+    gridSettings,
     nodeMatches,
     select,
     attach,
@@ -929,6 +991,16 @@ export const useEditorStore = defineStore('editor', () => {
     setVisible,
     setCastShadow,
     setReceiveShadow,
+    setBackground,
+    setBackgroundIntensity,
+    setEnvironmentIntensity,
+    setShadows,
+    setShadowType,
+    setGridVisible,
+    setGridSize,
+    setGridDivisions,
+    setGridCenter,
+    setGridColor,
     setGeometryType,
     setGeometryParam,
     setLightColor,

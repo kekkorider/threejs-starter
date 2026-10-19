@@ -5,7 +5,6 @@ import { useEditorStore, type ScreenName } from '../stores/editor'
 const store = useEditorStore()
 
 const screens: { id: ScreenName, icon: string, label: string }[] = [
-  { id: '2d', icon: 'screen-2d', label: '2D' },
   { id: '3d', icon: 'screen-3d', label: '3D' },
   { id: 'script', icon: 'script', label: 'Script' },
   { id: 'game', icon: 'game', label: 'Game' },

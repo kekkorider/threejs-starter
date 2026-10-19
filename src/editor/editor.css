@@ -689,13 +689,11 @@
 
 .placeholder { z-index: 2; }
 .viewport-wrap { z-index: 1; }
-.editor[data-screen="2d"] .viewport-wrap,
 .editor[data-screen="script"] .viewport-wrap,
 .editor[data-screen="asset"] .viewport-wrap {
   visibility: hidden;
   pointer-events: none;
 }
-.editor[data-screen="2d"] .screen-2d { display: flex; }
 .editor[data-screen="script"] .bottom,
 .editor[data-screen="script"] .center-body > .splitter.y { display: none; }
 .editor[data-screen="script"] .center-body { grid-template-rows: minmax(0, 1fr); }

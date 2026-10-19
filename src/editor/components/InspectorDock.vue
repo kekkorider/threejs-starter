@@ -3,8 +3,10 @@ import { computed } from 'vue'
 import { kindClass, kindIcon } from '../lib/format'
 import { useEditorStore } from '../stores/editor'
 import GeometrySection from './inspector/GeometrySection.vue'
+import GridSection from './inspector/GridSection.vue'
 import LightSection from './inspector/LightSection.vue'
 import MaterialSection from './inspector/MaterialSection.vue'
+import SceneSection from './inspector/SceneSection.vue'
 import TransformSection from './inspector/TransformSection.vue'
 import VisibilitySection from './inspector/VisibilitySection.vue'
 import Icon from './Icon.vue'
@@ -34,6 +36,8 @@ function onName(event: Event): void {
           <input :value="node.name" :disabled="node.isRoot" @change="onName" />
         </div>
         <div class="inherits">{{ node.inherits }}</div>
+        <SceneSection />
+        <GridSection />
         <TransformSection />
         <GeometrySection />
         <MaterialSection />

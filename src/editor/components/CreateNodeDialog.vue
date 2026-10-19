@@ -26,7 +26,7 @@ const draft = reactive({
   penumbra: 0.4,
 })
 const error = ref('')
-const groups = ['Node', 'Node3D', 'Light3D']
+const groups = ['Node', 'Mesh', 'Light']
 
 const entry = computed(() => NODE_TYPES.find((item) => item.kind === draft.kind) ?? NODE_TYPES[0]!)
 const specs = computed(() => geometryEntry(draft.geometryType).params)
@@ -34,12 +34,7 @@ const specs = computed(() => geometryEntry(draft.geometryType).params)
 function entriesFor(group: string): typeof NODE_TYPES {
   const query = draft.query.trim().toLowerCase()
   return NODE_TYPES.filter((item) => {
-    const inGroup = group === 'Node'
-      ? item.kind === 'Node3D'
-      : group === 'Node3D'
-        ? item.kind === 'MeshInstance3D'
-        : item.group === 'Light3D'
-    if (!inGroup) return false
+    if (item.group !== group) return false
     return !query || item.label.toLowerCase().includes(query)
   })
 }
@@ -194,7 +189,7 @@ function onBackdrop(event: PointerEvent): void {
       </div>
       <div class="dialog-actions">
         <label class="name-label">Name</label>
-        <input v-model="draft.name" type="text" placeholder="MeshInstance3D" />
+        <input v-model="draft.name" type="text" placeholder="MeshInstance" />
         <span class="spacer" />
         <button type="button" class="btn" @click="store.createOpen = false">Cancel</button>
         <button type="button" class="btn primary" @click="submit">Create</button>
