@@ -35,7 +35,7 @@ When a feature lands, move it from **Not yet** into **Already in place**. Do not
 - Orbit controls start aimed at `[0, 0, 0]`.
 - Each light has a labeled badge: Directional, Omni, Spot, Hemisphere.
 - Directional and spot lights also draw an arrow along the direction they shine (local -Z). Omni and hemisphere lights have no single aim, so they do not get an arrow.
-- Shaded draws the picture. Debug Split replaces it with four quadrants: color, depth, normals, and velocity. The quadrants are labeled while that mode is on.
+- Shaded draws the picture. Debug Split replaces it with four labeled quadrants: shaded color (top-left), camera distance (top-right, closer is darker and anything past about 32 m stays white), view-space normals (bottom-left), and motion since the previous frame (bottom-right, still pixels gray).
 
 ### Inspector
 

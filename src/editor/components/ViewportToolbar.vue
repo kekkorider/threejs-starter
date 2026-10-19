@@ -52,8 +52,8 @@ function onShading(event: Event): void {
       </select>
       <select
         :title="store.shading === 'debug'
-          ? 'Debug Split divides the view into four: color, depth, normals, and velocity.'
-          : 'Shaded is the scene. Debug Split shows color, depth, normals, and velocity.'"
+          ? 'Debug Split: top-left is the shaded color, top-right is distance from the camera (closer is darker), bottom-left is view normals, bottom-right is motion since the last frame (gray means still).'
+          : 'Shaded is the scene. Debug Split shows color, depth, normals, and motion in four quadrants.'"
         :value="store.shading"
         @change="onShading"
       >

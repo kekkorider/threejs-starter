@@ -11,7 +11,7 @@ import {
   geometryEntry,
   type GeometryType,
 } from './geometry'
-import { attachLightArrow, attachLightIcon, disposeLightArrow, disposeLightIcon, setLightArrowColor, type LightIconKind } from './lightIcons'
+import { attachLightArrow, attachLightIcon, disposeLightArrow, disposeLightIcon, type LightIconKind } from './lightIcons'
 import {
   DEFAULT_FLAGS,
   applyMaterialFlags,
@@ -1398,10 +1398,7 @@ export class EditorState {
     for (const node of this.nodes.values()) {
       const show = visible && node.object.visible
       const arrow = node.object.getObjectByName('LightArrow')
-      if (arrow) {
-        arrow.visible = show
-        if (node.object instanceof THREE.Light) setLightArrowColor(node.object, node.object.color)
-      }
+      if (arrow) arrow.visible = show
       const icon = node.object.getObjectByName('LightIcon')
       if (!icon) continue
       icon.visible = show

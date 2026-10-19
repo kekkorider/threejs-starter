@@ -74,14 +74,6 @@ export function attachLightArrow(object: THREE.Object3D): void {
   object.add(arrow)
 }
 
-export function setLightArrowColor(object: THREE.Object3D, color: THREE.Color): void {
-  const arrow = object.getObjectByName('LightArrow')
-  const shaft = arrow?.children[0]
-  if (!(shaft instanceof THREE.Mesh)) return
-  const material = shaft.material
-  if (material instanceof THREE.MeshBasicNodeMaterial) material.color.copy(color)
-}
-
 export function disposeLightArrow(object: THREE.Object3D): void {
   const arrow = object.getObjectByName('LightArrow')
   if (!arrow) return
