@@ -96,6 +96,9 @@ starter.mount(container)
 
 await renderer.init()
 
+renderer.shadowMap.enabled = true
+renderer.shadowMap.type = THREE.PCFShadowMap
+
 modules.assetLoader.createKTX2Loader()
 
 await modules.assetLoader.loadTextures(['/diamond-07.png', '/m.png'], { colorSpace: THREE.SRGBColorSpace })
@@ -110,6 +113,7 @@ await modules.assetLoader.loadKTX('/2d_etc1s.ktx2', {
 //
 const cube = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), ScaleMaterial)
 cube.name = 'Cube'
+cube.castShadow = true
 addComponent(cube, Spin, { axis: 'y', speed: 1 })
 addComponent(cube, Spin, { axis: 'z', speed: 0.87 })
 cube.position.set(-1.5, 0.5, 0)
@@ -118,9 +122,18 @@ scene.add(cube)
 //
 // Floor
 //
-const floor = new THREE.Mesh(new THREE.BoxGeometry(10, 0.5, 10), NormalMaterial)
+// Lit standard material so the ground can show light and shadows. The previous
+// normal material ignores every light, which made shadows look broken.
+const floorMaterial = new THREE.MeshStandardNodeMaterial({
+  color: 0x9aa3b2,
+  roughness: 0.92,
+  metalness: 0,
+})
+const floor = new THREE.Mesh(new THREE.BoxGeometry(10, 0.5, 10), floorMaterial)
 floor.name = 'Floor'
 floor.position.y = -2
+floor.castShadow = true
+floor.receiveShadow = true
 
 addComponent(floor, BodyBox, {
   motionType: MotionType.STATIC,
@@ -141,6 +154,7 @@ suzanne.position.x = 1.5
 suzanne.geometry.scale(1.3, 1.3, 1.3)
 MatcapMaterial.matcap = modules.assetLoader.getTexture('m')!
 suzanne.material = MatcapMaterial
+suzanne.castShadow = true
 addComponent(suzanne, BodyConvexHull, {
   mass: 1,
   motionType: MotionType.DYNAMIC,
@@ -159,6 +173,7 @@ const physicsCubeMaterial = new THREE.MeshBasicNodeMaterial({
 console.log(physicsCubeMaterial.map)
 const physicsCube = new THREE.Mesh(new THREE.BoxGeometry(0.75, 1, 1), physicsCubeMaterial)
 physicsCube.name = 'PhysicsCube'
+physicsCube.castShadow = true
 physicsCube.position.x = -1.5
 physicsCube.position.y = 1.3
 physicsCube.position.z = -1
@@ -182,6 +197,7 @@ scene.add(physicsCube)
 //
 const physicsSphere = new THREE.Mesh(new THREE.SphereGeometry(0.5), NormalMaterial)
 physicsSphere.name = 'PhysicsSphere'
+physicsSphere.castShadow = true
 physicsSphere.position.x = 1
 physicsSphere.position.y = 2
 physicsSphere.position.z = -2.5

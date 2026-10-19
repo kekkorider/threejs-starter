@@ -51,10 +51,16 @@ function onScrub(key: 'x' | 'y' | 'z', event: PointerEvent): void {
 function setInput(key: 'x' | 'y' | 'z', element: Element | null): void {
   inputs[key] = element as HTMLInputElement | null
 }
+
+function reset(): void {
+  const id = store.selectedId
+  if (!id) return
+  store.resetTransform(id, props.axis)
+}
 </script>
 
 <template>
-  <PropRow :label="label">
+  <PropRow :label="label" :reset="reset">
     <div class="vec3">
       <template v-for="key in (['x', 'y', 'z'] as const)" :key="key">
         <span class="axis" :class="key" @pointerdown="onScrub(key, $event)">{{ key }}</span>

@@ -44,7 +44,7 @@ function openMenu(event: MouseEvent): void {
       <button type="button" class="resource-btn" @click="openMenu">{{ geometry?.name ?? 'Imported' }}</button>
     </PropRow>
     <template v-if="geometry">
-      <PropRow label="Type">
+      <PropRow label="Type" :reset="() => node && store.resetGeometryType(node.id)">
         <select :value="geometry.type" @change="onType">
           <option v-for="entry in GEOMETRY_CATALOG" :key="entry.type" :value="entry.type">{{ entry.label }}</option>
         </select>
@@ -54,6 +54,7 @@ function openMenu(event: MouseEvent): void {
         :key="spec.key"
         :label="spec.label"
         scrub
+        :reset="() => node && store.resetGeometryParam(node.id, spec.key)"
         @scrub="scrubParam(spec, $event)"
       >
         <input

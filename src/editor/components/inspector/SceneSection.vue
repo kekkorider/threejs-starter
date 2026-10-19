@@ -25,21 +25,21 @@ function onIntensity(kind: 'background' | 'environment', event: Event): void {
 
 <template>
   <Section v-if="visible" title="Scene" section-key="scene">
-    <PropRow label="Background">
+    <PropRow label="Background" :reset="() => store.resetScene('background')">
       <input type="color" :value="scene.background" @input="store.setBackground(($event.target as HTMLInputElement).value)" />
     </PropRow>
-    <PropRow label="Background Intensity">
+    <PropRow label="Background Intensity" :reset="() => store.resetScene('backgroundIntensity')">
       <input type="number" min="0" max="10" step="0.05" :value="formatNumber(scene.backgroundIntensity)" @change="onIntensity('background', $event)" />
     </PropRow>
-    <PropRow label="Environment Intensity">
+    <PropRow label="Environment Intensity" :reset="() => store.resetScene('environmentIntensity')">
       <input type="number" min="0" max="10" step="0.05" :value="formatNumber(scene.environmentIntensity)" @change="onIntensity('environment', $event)" />
     </PropRow>
-    <PropRow label="Shadows">
+    <PropRow label="Shadows" :reset="() => store.resetScene('shadows')">
       <label class="check">
         <input type="checkbox" :checked="scene.shadows" @change="store.setShadows(($event.target as HTMLInputElement).checked)" />
       </label>
     </PropRow>
-    <PropRow label="Shadow Type">
+    <PropRow label="Shadow Type" :reset="() => store.resetScene('shadowType')">
       <select :value="scene.shadowType" @change="store.setShadowType(($event.target as HTMLSelectElement).value as ShadowTypeName)">
         <option value="basic">Basic</option>
         <option value="pcf">PCF</option>

@@ -23,6 +23,11 @@ function onSide(event: Event): void {
   if (!material.value) return
   store.setMaterialFlags(material.value.id, { side: (event.target as HTMLSelectElement).value as MaterialSide })
 }
+
+function onName(event: Event): void {
+  if (!material.value) return
+  store.setMaterialName(material.value.id, (event.target as HTMLInputElement).value)
+}
 </script>
 
 <template>
@@ -31,25 +36,28 @@ function onSide(event: Event): void {
       <button type="button" class="resource-btn" @click="openMenu">{{ material?.name ?? 'Empty' }}</button>
     </PropRow>
     <template v-if="material">
-      <PropRow label="Preset">
+      <PropRow label="Name" :reset="() => store.resetMaterialName(material.id)">
+        <input type="text" :value="material.name" @change="onName" />
+      </PropRow>
+      <PropRow label="Preset" :reset="() => store.resetMaterialSource(material.id)">
         <select :value="material.presetId" @change="onPreset">
           <option value="custom">Custom</option>
           <option v-for="preset in TSL_PRESETS" :key="preset.id" :value="preset.id">{{ preset.name }}</option>
         </select>
       </PropRow>
-      <PropRow label="Cull">
+      <PropRow label="Cull" :reset="() => store.resetMaterialFlag(material.id, 'side')">
         <select :value="material.side" @change="onSide">
           <option value="front">Front</option>
           <option value="back">Back</option>
           <option value="double">Double</option>
         </select>
       </PropRow>
-      <PropRow label="Transparent">
+      <PropRow label="Transparent" :reset="() => store.resetMaterialFlag(material.id, 'transparent')">
         <label class="check">
           <input type="checkbox" :checked="material.transparent" @change="store.setMaterialFlags(material.id, { transparent: ($event.target as HTMLInputElement).checked })" />
         </label>
       </PropRow>
-      <PropRow label="Wireframe">
+      <PropRow label="Wireframe" :reset="() => store.resetMaterialFlag(material.id, 'wireframe')">
         <label class="check">
           <input type="checkbox" :checked="material.wireframe" @change="store.setMaterialFlags(material.id, { wireframe: ($event.target as HTMLInputElement).checked })" />
         </label>

@@ -63,6 +63,7 @@ export interface InspectorView {
     angle: number | null
     penumbra: number | null
     aimable: boolean
+    lookAt: { enabled: boolean, x: number, y: number, z: number } | null
   } | null
 }
 
@@ -199,6 +200,9 @@ export const useEditorStore = defineStore('editor', () => {
         angle: object instanceof THREE.SpotLight ? THREE.MathUtils.radToDeg(object.angle) : null,
         penumbra: object instanceof THREE.SpotLight ? object.penumbra : null,
         aimable: node.kind === 'DirectionalLight3D' || node.kind === 'SpotLight3D',
+        lookAt: node.kind === 'DirectionalLight3D' || node.kind === 'SpotLight3D'
+          ? engine.readLookAt(node.id) ?? { enabled: false, x: 0, y: 0, z: 0 }
+          : null,
       }
     }
     return {
@@ -564,6 +568,21 @@ export const useEditorStore = defineStore('editor', () => {
     touch()
   }
 
+  function setGridPosition(axis: 'x' | 'y' | 'z', value: number): void {
+    engine.setGridPosition(axis, value)
+    touch()
+  }
+
+  function resetGrid(field: 'visible' | 'size' | 'divisions' | 'center' | 'color' | 'position'): void {
+    engine.resetGrid(field)
+    touch()
+  }
+
+  function resetScene(field: 'background' | 'backgroundIntensity' | 'environmentIntensity' | 'shadows' | 'shadowType'): void {
+    engine.resetScene(field)
+    touch()
+  }
+
   function setGeometryType(id: string, type: GeometryType): void {
     engine.setGeometryType(id, type)
     touch()
@@ -571,6 +590,16 @@ export const useEditorStore = defineStore('editor', () => {
 
   function setGeometryParam(id: string, key: string, value: number): void {
     engine.setGeometryParam(id, key, value)
+    touch()
+  }
+
+  function resetGeometryType(id: string): void {
+    engine.resetGeometryType(id)
+    touch()
+  }
+
+  function resetGeometryParam(id: string, key: string): void {
+    engine.resetGeometryParam(id, key)
     touch()
   }
 
@@ -599,8 +628,77 @@ export const useEditorStore = defineStore('editor', () => {
     touch()
   }
 
+  function readLookAt(id: string): { enabled: boolean, x: number, y: number, z: number } | null {
+    return engine.readLookAt(id)
+  }
+
+  function setLookAtEnabled(id: string, enabled: boolean): void {
+    engine.setLookAtEnabled(id, enabled)
+    touch()
+  }
+
+  function setLookAt(id: string, axis: 'x' | 'y' | 'z', value: number): void {
+    engine.setLookAt(id, axis, value)
+    touch()
+  }
+
+  function resetLookAtEnabled(id: string): void {
+    engine.resetLookAtEnabled(id)
+    touch()
+  }
+
+  function resetLookAt(id: string): void {
+    engine.resetLookAt(id)
+    touch()
+  }
+
+  function resetLight(id: string, field: 'color' | 'ground' | 'intensity' | 'range' | 'angle' | 'penumbra'): void {
+    engine.resetLight(id, field)
+    touch()
+  }
+
+  function resetTransform(id: string, part: 'pos' | 'rot' | 'scl'): void {
+    engine.resetTransform(id, part)
+    touch()
+  }
+
+  function resetVisible(id: string): void {
+    engine.resetVisible(id)
+    touch()
+  }
+
+  function resetCastShadow(id: string): void {
+    engine.resetCastShadow(id)
+    touch()
+  }
+
+  function resetReceiveShadow(id: string): void {
+    engine.resetReceiveShadow(id)
+    touch()
+  }
+
   function setMaterialFlags(id: string, patch: { side?: MaterialSide, transparent?: boolean, wireframe?: boolean }): void {
     engine.setMaterialFlags(id, patch)
+    touch()
+  }
+
+  function setMaterialName(id: string, name: string): void {
+    engine.setMaterialName(id, name)
+    touch()
+  }
+
+  function resetMaterialName(id: string): void {
+    engine.resetMaterialName(id)
+    touch()
+  }
+
+  function resetMaterialSource(id: string): void {
+    engine.resetMaterialSource(id)
+    touch(true)
+  }
+
+  function resetMaterialFlag(id: string, flag: 'side' | 'transparent' | 'wireframe'): void {
+    engine.resetMaterialFlag(id, flag)
     touch()
   }
 
@@ -744,6 +842,10 @@ export const useEditorStore = defineStore('editor', () => {
   function showPopup(rect: DOMRect, items: MenuItem[], alignStart: boolean): void {
     closePopups()
     popup.value = { x: rect.left, y: rect.bottom, items, alignStart }
+  }
+
+  function openPropertyMenu(x: number, y: number, reset: () => void): void {
+    showPopup(new DOMRect(x, y, 0, 0), [{ label: 'Reset', action: reset }], false)
   }
 
   function openMenu(name: string, anchor: HTMLElement): void {
@@ -1001,14 +1103,33 @@ export const useEditorStore = defineStore('editor', () => {
     setGridDivisions,
     setGridCenter,
     setGridColor,
+    setGridPosition,
+    resetGrid,
+    resetScene,
     setGeometryType,
     setGeometryParam,
+    resetGeometryType,
+    resetGeometryParam,
     setLightColor,
     setLightIntensity,
     setLightRange,
     setSpotAngle,
     setSpotPenumbra,
+    readLookAt,
+    setLookAtEnabled,
+    setLookAt,
+    resetLookAtEnabled,
+    resetLookAt,
+    resetLight,
+    resetTransform,
+    resetVisible,
+    resetCastShadow,
+    resetReceiveShadow,
     setMaterialFlags,
+    setMaterialName,
+    resetMaterialName,
+    resetMaterialSource,
+    resetMaterialFlag,
     applyBoundPreset,
     applyNodePreset,
     onTslChange,
@@ -1021,6 +1142,7 @@ export const useEditorStore = defineStore('editor', () => {
     selectGeometryFile,
     applyAssetPreset,
     closePopups,
+    openPropertyMenu,
     openMenu,
     openContextMenu,
     openGeometryMenu,

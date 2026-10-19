@@ -11,6 +11,7 @@ import {
   geometryEntry,
   type GeometryType,
 } from './geometry'
+import { attachLightIcon, disposeLightIcon, type LightIconKind } from './lightIcons'
 import {
   DEFAULT_FLAGS,
   applyMaterialFlags,
@@ -31,6 +32,33 @@ export type NodeKind =
 export type ToolMode = 'select' | 'translate' | 'rotate' | 'scale'
 export type ShadingMode = 'shaded' | 'debug'
 
+export interface LookAtConfig {
+  enabled: boolean
+  x: number
+  y: number
+  z: number
+}
+
+export interface NodeDefaults {
+  position: [number, number, number]
+  rotation: [number, number, number]
+  scale: [number, number, number]
+  visible: boolean
+  castShadow: boolean | null
+  receiveShadow: boolean | null
+  light: LightDefaults | null
+}
+
+export interface LightDefaults {
+  color: string
+  ground: string | null
+  intensity: number
+  range: number | null
+  angle: number | null
+  penumbra: number | null
+  lookAt: LookAtConfig | null
+}
+
 export interface EditorNode {
   id: string
   name: string
@@ -42,6 +70,7 @@ export interface EditorNode {
   isRoot: boolean
   geometryId: string | null
   materialId: string | null
+  defaults: NodeDefaults
 }
 
 export interface GeometryResource {
@@ -50,6 +79,7 @@ export interface GeometryResource {
   type: GeometryType
   params: Record<string, number>
   geometry: THREE.BufferGeometry | null
+  defaults: { type: GeometryType, params: Record<string, number> }
 }
 
 export interface MaterialResource {
@@ -61,6 +91,7 @@ export interface MaterialResource {
   wireframe: boolean
   material: THREE.MeshStandardNodeMaterial | null
   error: string | null
+  defaults: { name: string, source: string, side: MaterialSide, transparent: boolean, wireframe: boolean }
 }
 
 export interface LogLine {
@@ -116,6 +147,24 @@ export interface GridSettings {
   divisions: number
   center: string
   color: string
+  position: { x: number, y: number, z: number }
+}
+
+const SCENE_DEFAULTS: SceneSettings = {
+  background: '#3a3a3a',
+  backgroundIntensity: 1,
+  environmentIntensity: 0.55,
+  shadows: true,
+  shadowType: 'pcf',
+}
+
+const GRID_DEFAULTS = {
+  visible: true,
+  size: 40,
+  divisions: 40,
+  center: '#8a8a8a',
+  color: '#2a2a2a',
+  position: { x: 0, y: 0, z: 0 },
 }
 
 const SHADOW_TYPE: Record<ShadowTypeName, THREE.ShadowMapType> = {
@@ -138,11 +187,12 @@ export class EditorState {
   playing = false
   paused = false
   groundY = 0
-  gridVisible = true
-  gridSize = 40
-  gridDivisions = 40
-  gridCenter = '#8a8a8a'
-  gridColor = '#2a2a2a'
+  gridVisible = GRID_DEFAULTS.visible
+  gridSize = GRID_DEFAULTS.size
+  gridDivisions = GRID_DEFAULTS.divisions
+  gridCenter = GRID_DEFAULTS.center
+  gridColor = GRID_DEFAULTS.color
+  gridPosition = new THREE.Vector3()
   logs: LogLine[] = []
   controls: TransformControls | null = null
   /** Editor gizmos, grid, and selection are hidden on the plain scene route. */
@@ -222,6 +272,7 @@ export class EditorState {
     })
 
     this.installEnvironment(renderer)
+    if (this.scene) this.scene.environmentIntensity = SCENE_DEFAULTS.environmentIntensity
     starter.ctx.on(ThreeContextEvents.Update, () => this.onFrame())
 
     const hideProfiler = () => {
@@ -239,6 +290,7 @@ export class EditorState {
   setChromeVisible(visible: boolean): void {
     this.chromeVisible = visible
     this.applyGridVisibility()
+    this.updateLightIcons()
     if (!this.controls) return
     if (!visible) {
       this.controls.detach()
@@ -270,7 +322,16 @@ export class EditorState {
       divisions: this.gridDivisions,
       center: this.gridCenter,
       color: this.gridColor,
+      position: { x: this.gridPosition.x, y: this.gridPosition.y, z: this.gridPosition.z },
     }
+  }
+
+  resetScene(field: keyof SceneSettings): void {
+    if (field === 'background') this.setBackground(SCENE_DEFAULTS.background)
+    else if (field === 'backgroundIntensity') this.setBackgroundIntensity(SCENE_DEFAULTS.backgroundIntensity)
+    else if (field === 'environmentIntensity') this.setEnvironmentIntensity(SCENE_DEFAULTS.environmentIntensity)
+    else if (field === 'shadows') this.setShadows(SCENE_DEFAULTS.shadows)
+    else this.setShadowType(SCENE_DEFAULTS.shadowType)
   }
 
   setBackground(color: string): void {
@@ -329,6 +390,24 @@ export class EditorState {
     this.rebuildGrid()
   }
 
+  setGridPosition(axis: 'x' | 'y' | 'z', value: number): void {
+    if (!Number.isFinite(value)) return
+    this.gridPosition[axis] = value
+    this.applyGridPosition()
+  }
+
+  resetGrid(field: 'visible' | 'size' | 'divisions' | 'center' | 'color' | 'position'): void {
+    if (field === 'visible') this.setGridVisible(GRID_DEFAULTS.visible)
+    else if (field === 'size') this.setGridSize(GRID_DEFAULTS.size)
+    else if (field === 'divisions') this.setGridDivisions(GRID_DEFAULTS.divisions)
+    else if (field === 'center') this.setGridCenter(GRID_DEFAULTS.center)
+    else if (field === 'color') this.setGridColor(GRID_DEFAULTS.color)
+    else {
+      this.gridPosition.set(GRID_DEFAULTS.position.x, GRID_DEFAULTS.position.y, GRID_DEFAULTS.position.z)
+      this.applyGridPosition()
+    }
+  }
+
   selected(): EditorNode | null {
     if (!this.selectedId) return null
     return this.nodes.get(this.selectedId) ?? null
@@ -363,6 +442,7 @@ export class EditorState {
   setPlaying(playing: boolean): void {
     this.playing = playing
     this.applyGridVisibility()
+    this.updateLightIcons()
     if (playing) this.controls?.detach()
     else this.syncGizmo()
     this.updateSelectionBox()
@@ -386,7 +466,7 @@ export class EditorState {
     const orbit = this.starter?.ctx.modules.orbitControls.controls
     if (!node || !camera || !orbit || node.isRoot) return
 
-    const bounds = new THREE.Box3().setFromObject(node.object)
+    const bounds = this.measureBounds(node.object, new THREE.Box3())
     const center = bounds.isEmpty()
       ? node.object.getWorldPosition(new THREE.Vector3())
       : bounds.getCenter(new THREE.Vector3())
@@ -459,29 +539,26 @@ export class EditorState {
     const parent = this.parentOrSelected(options.parentId)
     let light: THREE.Light
     if (options.kind === 'DirectionalLight3D') {
-      const directional = new THREE.DirectionalLight(options.color, options.intensity)
-      directional.castShadow = true
-      light = directional
+      light = new THREE.DirectionalLight(options.color, options.intensity)
     } else if (options.kind === 'OmniLight3D') {
-      light = new THREE.PointLight(options.color, options.intensity, options.range ?? 12)
+      light = new THREE.PointLight(options.color, options.intensity, options.range ?? 12, 0)
     } else if (options.kind === 'SpotLight3D') {
-      const spot = new THREE.SpotLight(
+      light = new THREE.SpotLight(
         options.color,
         options.intensity,
         options.range ?? 16,
         THREE.MathUtils.degToRad(options.angle ?? 35),
         options.penumbra ?? 0.4,
+        0,
       )
-      light = spot
     } else {
       light = new THREE.HemisphereLight(options.color, options.groundColor ?? '#3a332c', options.intensity)
     }
 
     light.name = this.uniqueName(options.name?.trim() || NODE_LABEL[options.kind])
-    if (options.kind !== 'HemisphereLight3D') {
-      light.position.copy(this.spawnPoint(2.5))
-      light.lookAt(0, this.groundY, 0)
-    }
+    const aimable = options.kind === 'DirectionalLight3D' || options.kind === 'SpotLight3D'
+    if (options.kind !== 'HemisphereLight3D') light.position.copy(this.spawnPoint(2.5))
+    this.prepareLight(light, aimable ? new THREE.Vector3(0, this.groundY, 0) : null)
     parent.object.add(light)
     const node = this.addNode(light, parent.id, options.kind, false)
     this.aimLight(light)
@@ -495,6 +572,7 @@ export class EditorState {
     if (!node || node.isRoot || !node.parentId) return null
     const copy = this.cloneNode(node, node.parentId)
     if ((copy.object as THREE.Mesh).isMesh) copy.object.position.x += 0.45
+    this.captureDefaults(copy)
     this.log(`Duplicated ${node.name} as ${copy.name}`)
     this.select(copy.id)
     return copy
@@ -504,6 +582,7 @@ export class EditorState {
     const node = this.nodes.get(id)
     if (!node || node.isRoot) return
     const ids = this.collectIds(node)
+    this.releaseLights(node.object)
     destroy(node.object)
     for (const childId of ids) this.nodes.delete(childId)
     const parent = node.parentId ? this.nodes.get(node.parentId) : undefined
@@ -544,6 +623,7 @@ export class EditorState {
     const node = this.nodes.get(id)
     if (!node || !Number.isFinite(degrees)) return
     node.object.rotation[axis] = THREE.MathUtils.degToRad(degrees)
+    this.syncLookAtFromRotation(node.object)
   }
 
   setScale(id: string, axis: 'x' | 'y' | 'z', value: number): void {
@@ -584,6 +664,25 @@ export class EditorState {
   setGeometryParam(nodeId: string, key: string, value: number): void {
     const resource = this.geometryOf(nodeId)
     if (!resource) return
+    resource.params[key] = clampParam(resource.type, key, value)
+    this.rebuildGeometry(resource.id)
+  }
+
+  resetGeometryType(nodeId: string): void {
+    const resource = this.geometryOf(nodeId)
+    if (!resource) return
+    resource.type = resource.defaults.type
+    resource.params = { ...resource.defaults.params }
+    this.rebuildGeometry(resource.id)
+  }
+
+  resetGeometryParam(nodeId: string, key: string): void {
+    const resource = this.geometryOf(nodeId)
+    if (!resource) return
+    const spec = geometryEntry(resource.type).params.find((item) => item.key === key)
+    const stored = resource.type === resource.defaults.type ? resource.defaults.params[key] : undefined
+    const value = stored ?? spec?.default
+    if (value === undefined) return
     resource.params[key] = clampParam(resource.type, key, value)
     this.rebuildGeometry(resource.id)
   }
@@ -652,6 +751,36 @@ export class EditorState {
     if (resource.material) applyMaterialFlags(resource.material, this.flagsOf(resource))
   }
 
+  setMaterialName(materialId: string, name: string): void {
+    const resource = this.materials.get(materialId)
+    const next = name.trim().replace(/[\\/]/g, '')
+    if (!resource || !next) return
+    resource.name = this.uniqueResourceName(next, this.materials, resource.id)
+    if (resource.material) resource.material.name = resource.name
+  }
+
+  resetMaterialName(materialId: string): void {
+    const resource = this.materials.get(materialId)
+    if (!resource) return
+    this.setMaterialName(materialId, resource.defaults.name)
+  }
+
+  resetMaterialSource(materialId: string): void {
+    const resource = this.materials.get(materialId)
+    if (!resource) return
+    resource.source = resource.defaults.source
+    const compiled = this.compileMaterial(materialId)
+    if (!compiled.ok) this.log(`${resource.name}: ${compiled.error}`, 'error')
+  }
+
+  resetMaterialFlag(materialId: string, flag: keyof MaterialFlags): void {
+    const resource = this.materials.get(materialId)
+    if (!resource) return
+    if (flag === 'side') this.setMaterialFlags(materialId, { side: resource.defaults.side })
+    else if (flag === 'transparent') this.setMaterialFlags(materialId, { transparent: resource.defaults.transparent })
+    else this.setMaterialFlags(materialId, { wireframe: resource.defaults.wireframe })
+  }
+
   assignMaterial(nodeId: string, materialId: string): void {
     const node = this.nodes.get(nodeId)
     const resource = this.materials.get(materialId)
@@ -716,7 +845,12 @@ export class EditorState {
   setLightRange(id: string, value: number): void {
     const light = this.lightOf(id)
     if (!light || !Number.isFinite(value)) return
-    if (light instanceof THREE.PointLight || light instanceof THREE.SpotLight) light.distance = Math.max(0, value)
+    if (!(light instanceof THREE.PointLight) && !(light instanceof THREE.SpotLight)) return
+    light.distance = Math.max(0, value)
+    if (light instanceof THREE.PointLight) {
+      light.shadow.camera.far = Math.max(light.distance, 0.5)
+      light.shadow.camera.updateProjectionMatrix()
+    }
   }
 
   setSpotAngle(id: string, degrees: number): void {
@@ -729,6 +863,95 @@ export class EditorState {
     const light = this.lightOf(id)
     if (!(light instanceof THREE.SpotLight) || !Number.isFinite(value)) return
     light.penumbra = Math.min(1, Math.max(0, value))
+  }
+
+  readLookAt(id: string): LookAtConfig | null {
+    const light = this.lightOf(id)
+    if (!light) return null
+    return copyLookAt(light.userData.lookAt as LookAtConfig | undefined)
+  }
+
+  setLookAtEnabled(id: string, enabled: boolean): void {
+    const light = this.lightOf(id)
+    if (!(light instanceof THREE.DirectionalLight) && !(light instanceof THREE.SpotLight)) return
+    const look = this.ensureLookAt(light)
+    look.enabled = enabled
+    this.aimLight(light)
+  }
+
+  setLookAt(id: string, axis: 'x' | 'y' | 'z', value: number): void {
+    const light = this.lightOf(id)
+    if (!(light instanceof THREE.DirectionalLight) && !(light instanceof THREE.SpotLight)) return
+    if (!Number.isFinite(value)) return
+    const look = this.ensureLookAt(light)
+    look[axis] = value
+    look.enabled = true
+    this.aimLight(light)
+  }
+
+  resetLookAtEnabled(id: string): void {
+    const node = this.nodes.get(id)
+    const look = node?.defaults.light?.lookAt
+    if (!look) return
+    this.setLookAtEnabled(id, look.enabled)
+  }
+
+  resetLookAt(id: string): void {
+    const node = this.nodes.get(id)
+    const look = node?.defaults.light?.lookAt
+    if (!look) return
+    const light = this.lightOf(id)
+    if (!(light instanceof THREE.DirectionalLight) && !(light instanceof THREE.SpotLight)) return
+    const current = this.ensureLookAt(light)
+    current.x = look.x
+    current.y = look.y
+    current.z = look.z
+    current.enabled = true
+    this.aimLight(light)
+  }
+
+  resetLight(id: string, field: 'color' | 'ground' | 'intensity' | 'range' | 'angle' | 'penumbra'): void {
+    const defaults = this.nodes.get(id)?.defaults.light
+    if (!defaults) return
+    if (field === 'color') this.setLightColor(id, defaults.color)
+    else if (field === 'ground' && defaults.ground) this.setLightColor(id, defaults.ground, 'ground')
+    else if (field === 'intensity') this.setLightIntensity(id, defaults.intensity)
+    else if (field === 'range' && defaults.range !== null) this.setLightRange(id, defaults.range)
+    else if (field === 'angle' && defaults.angle !== null) this.setSpotAngle(id, defaults.angle)
+    else if (field === 'penumbra' && defaults.penumbra !== null) this.setSpotPenumbra(id, defaults.penumbra)
+  }
+
+  resetTransform(id: string, part: 'pos' | 'rot' | 'scl'): void {
+    const node = this.nodes.get(id)
+    if (!node || node.isRoot) return
+    const defaults = node.defaults
+    if (part === 'pos') node.object.position.set(defaults.position[0], defaults.position[1], defaults.position[2])
+    else if (part === 'rot') {
+      node.object.rotation.set(
+        THREE.MathUtils.degToRad(defaults.rotation[0]),
+        THREE.MathUtils.degToRad(defaults.rotation[1]),
+        THREE.MathUtils.degToRad(defaults.rotation[2]),
+      )
+      this.syncLookAtFromRotation(node.object)
+    } else node.object.scale.set(defaults.scale[0], defaults.scale[1], defaults.scale[2])
+  }
+
+  resetVisible(id: string): void {
+    const node = this.nodes.get(id)
+    if (!node) return
+    this.setVisible(id, node.defaults.visible)
+  }
+
+  resetCastShadow(id: string): void {
+    const node = this.nodes.get(id)
+    if (!node || node.defaults.castShadow === null) return
+    this.setCastShadow(id, node.defaults.castShadow)
+  }
+
+  resetReceiveShadow(id: string): void {
+    const node = this.nodes.get(id)
+    if (!node || node.defaults.receiveShadow === null) return
+    this.setReceiveShadow(id, node.defaults.receiveShadow)
   }
 
   usersOfMaterial(materialId: string): EditorNode[] {
@@ -756,11 +979,13 @@ export class EditorState {
     if (!camera) return null
     const raycaster = new THREE.Raycaster()
     raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera)
-    const meshes: THREE.Object3D[] = []
+    const targets: THREE.Object3D[] = []
     for (const node of this.nodes.values()) {
-      if (node.object instanceof THREE.Mesh && node.object.visible) meshes.push(node.object)
+      if (node.object instanceof THREE.Mesh && node.object.visible) targets.push(node.object)
+      const icon = node.object.getObjectByName('LightIcon')
+      if (icon?.visible) targets.push(icon)
     }
-    const hits = raycaster.intersectObjects(meshes, true)
+    const hits = raycaster.intersectObjects(targets, true)
     for (const hit of hits) {
       let current: THREE.Object3D | null = hit.object
       while (current) {
@@ -773,23 +998,54 @@ export class EditorState {
   }
 
   private onFrame(): void {
-    if (this.playing || !this.chromeVisible) return
-    this.updateSelectionBox()
     for (const node of this.nodes.values()) {
       if (node.kind === 'DirectionalLight3D' || node.kind === 'SpotLight3D') this.aimLight(node.object)
     }
+    if (this.playing || !this.chromeVisible) return
+    this.updateSelectionBox()
+    this.updateLightIcons()
   }
 
   private aimLight(object: THREE.Object3D): void {
     if (!(object instanceof THREE.DirectionalLight) && !(object instanceof THREE.SpotLight)) return
     const scene = this.scene
     if (!scene) return
+    const look = object.userData.lookAt as LookAtConfig | undefined
     object.getWorldPosition(this.tmp)
-    this.forward.set(0, 0, -1).applyQuaternion(object.quaternion)
-    object.target.position.copy(this.tmp).add(this.forward)
+    const dragging = Boolean(this.controls?.dragging && this.tool === 'rotate' && this.selectedId === object.userData.editorId)
+    if (look?.enabled) {
+      if (dragging) {
+        const dist = Math.max(this.tmp.distanceTo(this.forward.set(look.x, look.y, look.z)), 1)
+        this.forward.set(0, 0, -1).applyQuaternion(object.quaternion).multiplyScalar(dist).add(this.tmp)
+        look.x = this.forward.x
+        look.y = this.forward.y
+        look.z = this.forward.z
+        object.target.position.copy(this.forward)
+      } else {
+        object.target.position.set(look.x, look.y, look.z)
+        if (this.tmp.distanceToSquared(object.target.position) > 1e-8) object.lookAt(look.x, look.y, look.z)
+      }
+    } else {
+      this.forward.set(0, 0, -1).applyQuaternion(object.quaternion)
+      object.target.position.copy(this.tmp).add(this.forward)
+    }
     object.target.userData.editorHidden = true
     if (!object.target.parent) scene.add(object.target)
     object.target.updateMatrixWorld()
+  }
+
+  private syncLookAtFromRotation(object: THREE.Object3D): void {
+    const look = object.userData.lookAt as LookAtConfig | undefined
+    if (!look?.enabled) return
+    if (!(object instanceof THREE.DirectionalLight) && !(object instanceof THREE.SpotLight)) return
+    object.updateWorldMatrix(true, false)
+    object.getWorldPosition(this.tmp)
+    const dist = Math.max(this.tmp.distanceTo(this.forward.set(look.x, look.y, look.z)), 1)
+    this.forward.set(0, 0, -1).applyQuaternion(object.quaternion).multiplyScalar(dist).add(this.tmp)
+    look.x = this.forward.x
+    look.y = this.forward.y
+    look.z = this.forward.z
+    this.aimLight(object)
   }
 
   private syncGizmo(): void {
@@ -812,7 +1068,7 @@ export class EditorState {
       helper.visible = false
       return
     }
-    this.selectionBounds.setFromObject(node.object)
+    this.measureBounds(node.object, this.selectionBounds)
     if (this.selectionBounds.isEmpty()) {
       node.object.getWorldPosition(this.tmp)
       this.selectionBounds.setFromCenterAndSize(this.tmp, this.tmpSize.set(0.45, 0.45, 0.45))
@@ -823,7 +1079,10 @@ export class EditorState {
   private applyGridVisibility(): void {
     if (!this.grid) return
     this.grid.visible = this.gridVisible && this.chromeVisible && !this.playing
-    this.grid.position.set(0, 0, 0)
+  }
+
+  private applyGridPosition(): void {
+    this.grid?.position.copy(this.gridPosition)
   }
 
   private rebuildGrid(): void {
@@ -836,11 +1095,11 @@ export class EditorState {
       for (const material of materials) material.dispose()
     }
     const grid = new THREE.GridHelper(this.gridSize, this.gridDivisions, this.gridCenter, this.gridColor)
-    grid.position.set(0, 0, 0)
     grid.userData.editorHidden = true
     grid.raycast = () => {}
     this.grid = grid
     scene.add(grid)
+    this.applyGridPosition()
     this.applyGridVisibility()
   }
 
@@ -872,9 +1131,59 @@ export class EditorState {
     const sun = new THREE.DirectionalLight('#fff4e4', 2.4)
     sun.name = 'DirectionalLight'
     sun.position.set(6, 10, 4)
-    sun.castShadow = true
-    sun.lookAt(0, 0, 0)
+    this.prepareLight(sun, new THREE.Vector3(0, 0, 0))
     world.add(hemi, sun)
+  }
+
+  /**
+   * Point and spot lights use decay 0 so the Energy field stays bright out to Range.
+   * Three's default decay of 2 is candela with inverse-square falloff, which makes
+   * an energy of 2.4 invisible a couple of metres away. Directional and spot lights
+   * also get a shadow frustum large enough for the starter floor.
+   */
+  private prepareLight(light: THREE.Light, lookAt: THREE.Vector3 | null): void {
+    if (light instanceof THREE.PointLight || light instanceof THREE.SpotLight) light.decay = 0
+    if (light instanceof THREE.DirectionalLight || light instanceof THREE.SpotLight || light instanceof THREE.PointLight) {
+      light.castShadow = true
+      this.configureShadow(light)
+    }
+    if (lookAt && (light instanceof THREE.DirectionalLight || light instanceof THREE.SpotLight)) {
+      light.userData.lookAt = { enabled: true, x: lookAt.x, y: lookAt.y, z: lookAt.z }
+      light.lookAt(lookAt)
+    }
+  }
+
+  private configureShadow(light: THREE.DirectionalLight | THREE.SpotLight | THREE.PointLight): void {
+    const shadow = light.shadow
+    shadow.normalBias = 0.04
+    if (light instanceof THREE.DirectionalLight) {
+      shadow.mapSize.set(2048, 2048)
+      shadow.bias = -0.0002
+      const camera = shadow.camera
+      camera.near = 0.5
+      camera.far = 80
+      if (camera instanceof THREE.OrthographicCamera) {
+        camera.left = -20
+        camera.right = 20
+        camera.top = 20
+        camera.bottom = -20
+      }
+      camera.updateProjectionMatrix()
+      return
+    }
+    if (light instanceof THREE.SpotLight) {
+      shadow.mapSize.set(1024, 1024)
+      shadow.bias = -0.0001
+      shadow.camera.near = 0.1
+      shadow.camera.far = Math.max(light.distance, 30)
+      shadow.camera.updateProjectionMatrix()
+      return
+    }
+    shadow.mapSize.set(512, 512)
+    shadow.bias = -0.002
+    shadow.camera.near = 0.1
+    shadow.camera.far = Math.max(light.distance, 20)
+    shadow.camera.updateProjectionMatrix()
   }
 
   private parentOrSelected(parentId?: string | null): EditorNode {
@@ -895,31 +1204,42 @@ export class EditorState {
   }
 
   private createGeometryResource(type: GeometryType, params: Record<string, number>, name?: string): GeometryResource {
+    const paramsWithDefaults = { ...defaultParams(type), ...params }
     const resource: GeometryResource = {
       id: `geo${this.idCounter++}`,
       name: this.uniqueResourceName(name ?? geometryEntry(type).label, this.geometries),
       type,
-      params: { ...defaultParams(type), ...params },
+      params: paramsWithDefaults,
       geometry: null,
+      defaults: { type, params: { ...paramsWithDefaults } },
     }
     for (const spec of geometryEntry(type).params) {
       resource.params[spec.key] = clampParam(type, spec.key, resource.params[spec.key] ?? spec.default)
     }
+    resource.defaults.params = { ...resource.params }
     resource.geometry = buildGeometry(type, resource.params)
     this.geometries.set(resource.id, resource)
     return resource
   }
 
   private createMaterialResource(name: string, source: string, flags: MaterialFlags): MaterialResource {
+    const unique = this.uniqueResourceName(name, this.materials)
     const resource: MaterialResource = {
       id: `mat${this.idCounter++}`,
-      name: this.uniqueResourceName(name, this.materials),
+      name: unique,
       source,
       side: flags.side,
       transparent: flags.transparent,
       wireframe: flags.wireframe,
       material: null,
       error: null,
+      defaults: {
+        name: unique,
+        source,
+        side: flags.side,
+        transparent: flags.transparent,
+        wireframe: flags.wireframe,
+      },
     }
     this.materials.set(resource.id, resource)
     return resource
@@ -968,6 +1288,7 @@ export class EditorState {
       isRoot,
       geometryId: null,
       materialId: null,
+      defaults: this.defaultsFrom(object),
     }
     this.nodes.set(id, node)
     if (parentId) this.nodes.get(parentId)?.childIds.push(id)
@@ -976,6 +1297,8 @@ export class EditorState {
       if ((child as THREE.Camera).isCamera) continue
       this.registerTree(child, id, true)
     }
+    this.attachIcon(node)
+    this.captureDefaults(node)
     return id
   }
 
@@ -994,9 +1317,12 @@ export class EditorState {
       isRoot: false,
       geometryId: null,
       materialId: null,
+      defaults: this.defaultsFrom(object),
     }
     this.nodes.set(id, node)
     this.nodes.get(parentId)?.childIds.push(id)
+    this.attachIcon(node)
+    this.captureDefaults(node)
     return node
   }
 
@@ -1057,6 +1383,83 @@ export class EditorState {
     }
   }
 
+  private attachIcon(node: EditorNode): void {
+    const kind = iconKind(node.kind)
+    if (!kind) return
+    attachLightIcon(node.object, kind)
+  }
+
+  private updateLightIcons(): void {
+    const camera = this.camera
+    const visible = this.chromeVisible && !this.playing
+    const height = this.starter?.ctx.renderer.domElement.clientHeight || 800
+    const fov = camera ? THREE.MathUtils.degToRad(camera.fov) : 1
+    for (const node of this.nodes.values()) {
+      const icon = node.object.getObjectByName('LightIcon')
+      if (!icon) continue
+      icon.visible = visible && node.object.visible
+      if (!icon.visible || !camera) continue
+      node.object.getWorldPosition(this.tmp)
+      const distance = Math.max(camera.position.distanceTo(this.tmp), 0.5)
+      const world = 2 * Math.tan(fov / 2) * distance * (64 / Math.max(height, 1))
+      icon.scale.set(world, world, 1)
+    }
+  }
+
+  private measureBounds(object: THREE.Object3D, target: THREE.Box3): THREE.Box3 {
+    const icon = object.getObjectByName('LightIcon')
+    const was = icon?.visible ?? false
+    if (icon) icon.visible = false
+    target.setFromObject(object)
+    if (icon) icon.visible = was
+    return target
+  }
+
+  private releaseLights(object: THREE.Object3D): void {
+    const lights: THREE.Object3D[] = []
+    object.traverse((child) => {
+      if (child.userData.lightIcon) return
+      if (child.getObjectByName('LightIcon') || child instanceof THREE.DirectionalLight || child instanceof THREE.SpotLight) {
+        lights.push(child)
+      }
+    })
+    for (const light of lights) {
+      if (light instanceof THREE.DirectionalLight || light instanceof THREE.SpotLight) light.target.removeFromParent()
+      disposeLightIcon(light)
+    }
+  }
+
+  private captureDefaults(node: EditorNode): void {
+    node.defaults = this.defaultsFrom(node.object)
+  }
+
+  private defaultsFrom(object: THREE.Object3D): NodeDefaults {
+    const cast = 'castShadow' in object && typeof (object as { castShadow?: unknown }).castShadow === 'boolean'
+      ? (object as { castShadow: boolean }).castShadow
+      : null
+    return {
+      position: [object.position.x, object.position.y, object.position.z],
+      rotation: [
+        THREE.MathUtils.radToDeg(object.rotation.x),
+        THREE.MathUtils.radToDeg(object.rotation.y),
+        THREE.MathUtils.radToDeg(object.rotation.z),
+      ],
+      scale: [object.scale.x, object.scale.y, object.scale.z],
+      visible: object.visible,
+      castShadow: cast,
+      receiveShadow: object instanceof THREE.Mesh ? object.receiveShadow : null,
+      light: lightDefaultsFrom(object),
+    }
+  }
+
+  private ensureLookAt(light: THREE.DirectionalLight | THREE.SpotLight): LookAtConfig {
+    const current = light.userData.lookAt as LookAtConfig | undefined
+    if (current) return current
+    const created: LookAtConfig = { enabled: false, x: 0, y: 0, z: 0 }
+    light.userData.lookAt = created
+    return created
+  }
+
   private uniqueName(base: string): string {
     const names = new Set([...this.nodes.values()].map((node) => node.name))
     if (!names.has(base)) return base
@@ -1072,6 +1475,46 @@ export class EditorState {
     while (names.has(`${base}${index}`)) index += 1
     return `${base}${index}`
   }
+}
+
+function copyLookAt(value: LookAtConfig | undefined): LookAtConfig | null {
+  if (!value) return null
+  return { enabled: value.enabled, x: value.x, y: value.y, z: value.z }
+}
+
+function lightDefaultsFrom(object: THREE.Object3D): LightDefaults | null {
+  if (!(object instanceof THREE.Light)) return null
+  if (object instanceof THREE.HemisphereLight) {
+    return {
+      color: `#${object.color.getHexString()}`,
+      ground: `#${object.groundColor.getHexString()}`,
+      intensity: object.intensity,
+      range: null,
+      angle: null,
+      penumbra: null,
+      lookAt: null,
+    }
+  }
+  if (!(object instanceof THREE.DirectionalLight) && !(object instanceof THREE.SpotLight) && !(object instanceof THREE.PointLight)) {
+    return null
+  }
+  return {
+    color: `#${object.color.getHexString()}`,
+    ground: null,
+    intensity: object.intensity,
+    range: object instanceof THREE.PointLight || object instanceof THREE.SpotLight ? object.distance : null,
+    angle: object instanceof THREE.SpotLight ? THREE.MathUtils.radToDeg(object.angle) : null,
+    penumbra: object instanceof THREE.SpotLight ? object.penumbra : null,
+    lookAt: copyLookAt(object.userData.lookAt as LookAtConfig | undefined),
+  }
+}
+
+function iconKind(kind: NodeKind): LightIconKind | null {
+  if (kind === 'DirectionalLight3D') return 'directional'
+  if (kind === 'OmniLight3D') return 'omni'
+  if (kind === 'SpotLight3D') return 'spot'
+  if (kind === 'HemisphereLight3D') return 'hemisphere'
+  return null
 }
 
 function shadowTypeName(type: THREE.ShadowMapType | undefined): ShadowTypeName {
@@ -1111,7 +1554,7 @@ export const NODE_TYPES: { kind: NodeKind, label: string, group: string, descrip
     kind: 'DirectionalLight3D',
     label: 'DirectionalLight',
     group: 'Light',
-    description: 'A distant light with parallel rays. Rotate it to aim. It lights MeshStandardNodeMaterial surfaces.',
+    description: 'Parallel rays from a distant source. Aim it with Look at, or turn Look at off and rotate the node.',
     inherits: 'DirectionalLight < Light < Node',
   },
   {
@@ -1125,7 +1568,7 @@ export const NODE_TYPES: { kind: NodeKind, label: string, group: string, descrip
     kind: 'SpotLight3D',
     label: 'SpotLight',
     group: 'Light',
-    description: 'A cone of light. Rotate the node to aim it and set the cone angle in the inspector.',
+    description: 'A cone of light. Aim it with Look at, or turn Look at off and rotate the node.',
     inherits: 'SpotLight < Light < Node',
   },
   {
