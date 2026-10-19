@@ -1,0 +1,47 @@
+<script setup lang="ts">
+import { computed } from 'vue'
+import Icon from './Icon.vue'
+import { useEditorStore } from '../stores/editor'
+import { TSL_HELP } from '../tsl'
+
+const store = useEditorStore()
+
+const shortcuts = `Ctrl+A   Create node
+Ctrl+C   Create component
+Ctrl+D   Duplicate
+Ctrl+S   Apply TSL
+F2       Rename
+Del      Delete
+F        Focus selection
+Q W E R  Select, move, rotate, scale
+Y        Toggle snap
+F5       Play
+F8       Stop
+Esc      Stop play, or close a dialog
+
+Drag a scene-tree row onto another node to reparent it.
+Drag a component onto an object to add it. Double-click a component to edit it in the Script tab.
+Drag the colored x / y / z labels to scrub a value.`
+
+const title = computed(() => store.helpTopic === 'tsl' ? 'TSL Material Reference' : 'Editor Shortcuts')
+const body = computed(() => store.helpTopic === 'tsl' ? TSL_HELP : shortcuts)
+
+function onBackdrop(event: PointerEvent): void {
+  if (event.target === event.currentTarget) store.closeHelp()
+}
+</script>
+
+<template>
+  <div class="modal-back" @pointerdown="onBackdrop">
+    <div class="dialog help">
+      <div class="dialog-title">
+        <span>{{ title }}</span>
+        <span class="spacer" />
+        <button type="button" class="icon-btn" @click="store.closeHelp()">
+          <Icon name="close" />
+        </button>
+      </div>
+      <pre class="help-body">{{ body }}</pre>
+    </div>
+  </div>
+</template>

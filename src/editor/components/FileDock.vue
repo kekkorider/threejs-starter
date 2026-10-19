@@ -1,0 +1,99 @@
+<script setup lang="ts">
+import { computed } from 'vue'
+import { COMPONENT_DRAG_PREFIX } from '../behaviors'
+import Icon from './Icon.vue'
+import { useEditorStore } from '../stores/editor'
+
+const store = useEditorStore()
+let suppressClick = false
+const query = computed(() => store.fileFilter.trim().toLowerCase())
+
+const scenePath = 'res://World.tscn'
+const showScene = computed(() => !query.value || scenePath.toLowerCase().includes(query.value))
+
+const meshes = computed(() => store.geometryFiles.filter((file) => {
+  const path = `res://meshes/${file.name}.tres`
+  return !query.value || path.toLowerCase().includes(query.value)
+}))
+
+const materials = computed(() => store.materialFiles.filter((file) => {
+  const path = `res://materials/${file.name}.tsl`
+  return !query.value || path.toLowerCase().includes(query.value)
+}))
+
+const components = computed(() => store.componentFiles.filter((file) => {
+  return !query.value || file.path.toLowerCase().includes(query.value) || file.name.toLowerCase().includes(query.value)
+}))
+
+const empty = computed(() => !showScene.value && meshes.value.length === 0 && materials.value.length === 0 && components.value.length === 0)
+
+function onComponentDrag(event: DragEvent, id: string): void {
+  suppressClick = true
+  event.dataTransfer?.setData('text/plain', `${COMPONENT_DRAG_PREFIX}${id}`)
+  if (event.dataTransfer) event.dataTransfer.effectAllowed = 'copy'
+}
+
+function onComponentClick(id: string): void {
+  if (suppressClick) {
+    suppressClick = false
+    return
+  }
+  store.openComponentDialog(id)
+}
+</script>
+
+<template>
+  <section class="dock files-dock">
+    <div class="dock-title">File system</div>
+    <input v-model="store.fileFilter" class="filter file-filter" placeholder="Filter files" />
+    <div class="tree files">
+      <div v-if="empty" class="empty-note">No resources yet. Create a MeshInstance.</div>
+      <div
+        v-if="showScene"
+        class="file-row"
+        :class="{ selected: store.selectedId === store.rootId }"
+        @click="store.select(store.rootId)"
+      >
+        <span class="kind-icon scene"><Icon name="scene" /></span>
+        <span class="label">{{ scenePath }}</span>
+      </div>
+      <div v-if="meshes.length" class="group-label">res://meshes</div>
+      <div
+        v-for="file in meshes"
+        :key="file.id"
+        class="file-row"
+        @click="store.selectGeometryFile(file.id)"
+      >
+        <span class="kind-icon mesh"><Icon name="meshfile" /></span>
+        <span class="label">res://meshes/{{ file.name }}.tres</span>
+      </div>
+      <div v-if="materials.length" class="group-label">res://materials</div>
+      <div
+        v-for="file in materials"
+        :key="file.id"
+        class="file-row"
+        :class="{ selected: file.id === store.boundMaterialId }"
+        @click="store.selectMaterialFile(file.id)"
+      >
+        <span class="kind-icon mat"><Icon name="material" /></span>
+        <span class="label">res://materials/{{ file.name }}.tsl</span>
+      </div>
+      <div v-if="components.length" class="group-label">res://components</div>
+      <div
+        v-for="file in components"
+        :key="file.id"
+        class="file-row"
+        draggable="true"
+        @click="onComponentClick(file.id)"
+        @contextmenu.prevent="store.openComponentFileMenu(file.id, $event.clientX, $event.clientY)"
+        @dragstart="onComponentDrag($event, file.id)"
+      >
+        <span class="kind-icon component"><Icon name="component" /></span>
+        <span class="label">{{ file.path }}</span>
+        <button type="button" class="icon-btn danger row-delete" title="Delete" @click.stop="store.requestDeleteComponent(file.id)">
+          <Icon name="delete" />
+        </button>
+      </div>
+    </div>
+  </section>
+</template>
