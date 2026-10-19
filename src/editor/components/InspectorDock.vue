@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { kindClass, kindIcon } from '../lib/format'
 import { useEditorStore } from '../stores/editor'
+import ComponentSection from './inspector/ComponentSection.vue'
 import GeometrySection from './inspector/GeometrySection.vue'
 import GridSection from './inspector/GridSection.vue'
 import LightSection from './inspector/LightSection.vue'
@@ -28,7 +29,17 @@ function onName(event: Event): void {
       <input v-model="store.inspectorFilter" class="filter inspector-filter" placeholder="Filter properties" />
     </div>
     <div class="inspector">
-      <template v-if="node">
+      <template v-if="store.selectedComponent">
+        <div class="node-head">
+          <span class="kind-icon component">
+            <Icon name="component" />
+          </span>
+          <input :value="store.selectedComponent.name" disabled />
+        </div>
+        <div class="inherits">Object3DBehaviour</div>
+        <ComponentSection />
+      </template>
+      <template v-else-if="node">
         <div class="node-head">
           <span class="kind-icon" :class="kindClass(node.kind)">
             <Icon :name="kindIcon(node.kind)" />

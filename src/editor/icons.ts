@@ -26,6 +26,7 @@ const PATHS: Record<string, string> = {
   'screen-2d': `<rect x="2" y="3" width="12" height="10" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M2 6.2h12" stroke="currentColor" stroke-width="1.3"/>`,
   'screen-3d': `<path d="M8 2.2 13.2 5v6L8 13.8 2.8 11V5L8 2.2Z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>`,
   script: `<path d="M4 2.2h6.2L13 5v8.8H4V2.2Z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M10 2.4V5.2H13M6 8h4M6 10.4h3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>`,
+  component: `<path d="M4 2.2h6.2L13 5v8.8H4V2.2Z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M10 2.4V5.2H13M6.2 8.1 7.5 9.6 9.8 6.8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>`,
   game: `<rect x="2" y="5" width="12" height="7.2" rx="2" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M5 8.6h2.4M6.2 7.4v2.4M11 8h.1M12.4 9.4h.1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>`,
   asset: `<path d="M2.4 6.2 8 3.2l5.6 3L8 9.2 2.4 6.2Z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M2.4 9.2 8 12.2l5.6-3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>`,
   folder: `<path fill="currentColor" d="M1.6 4.2c0-.7.5-1.2 1.2-1.2h3l1.2 1.3h6.2c.7 0 1.2.5 1.2 1.2v6.2c0 .7-.5 1.2-1.2 1.2H2.8c-.7 0-1.2-.5-1.2-1.2V4.2Z"/>`,

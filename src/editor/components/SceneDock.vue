@@ -15,6 +15,9 @@ const query = computed(() => store.sceneFilter.trim().toLowerCase())
       <button type="button" class="icon-btn" title="Add Child Node (Ctrl+A)" @click="store.openCreate()">
         <Icon name="add" />
       </button>
+      <button type="button" class="icon-btn" title="Create Component (Ctrl+C)" @click="store.openComponentDialog()">
+        <Icon name="component" />
+      </button>
       <button type="button" class="icon-btn" title="Duplicate (Ctrl+D)" @click="store.duplicateSelection()">
         <Icon name="duplicate" />
       </button>

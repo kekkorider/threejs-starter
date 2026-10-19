@@ -186,7 +186,7 @@ export function applyMaterialFlags(material: THREE.MeshStandardNodeMaterial, fla
   material.needsUpdate = true
 }
 
-const KEYWORDS = new Set(['const', 'let', 'var', 'return', 'true', 'false', 'new', 'if', 'else', 'function'])
+const KEYWORDS = new Set(['const', 'let', 'var', 'return', 'true', 'false', 'new', 'if', 'else', 'function', 'class', 'export', 'import', 'extends', 'void', 'from'])
 const FUNCS = new Set([
   'color', 'float', 'int', 'vec2', 'vec3', 'vec4', 'uv', 'sin', 'cos', 'tan', 'mix', 'smoothstep',
   'step', 'clamp', 'abs', 'pow', 'min', 'max', 'fract', 'floor', 'checker', 'oscSine', 'mx_noise_float',

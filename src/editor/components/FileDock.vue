@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { COMPONENT_DRAG_PREFIX } from '../behaviors'
 import Icon from './Icon.vue'
 import { useEditorStore } from '../stores/editor'
 
 const store = useEditorStore()
+let suppressClick = false
 const query = computed(() => store.fileFilter.trim().toLowerCase())
 
 const scenePath = 'res://World.tscn'
@@ -19,7 +21,25 @@ const materials = computed(() => store.materialFiles.filter((file) => {
   return !query.value || path.toLowerCase().includes(query.value)
 }))
 
-const empty = computed(() => !showScene.value && meshes.value.length === 0 && materials.value.length === 0)
+const components = computed(() => store.componentFiles.filter((file) => {
+  return !query.value || file.path.toLowerCase().includes(query.value) || file.name.toLowerCase().includes(query.value)
+}))
+
+const empty = computed(() => !showScene.value && meshes.value.length === 0 && materials.value.length === 0 && components.value.length === 0)
+
+function onComponentDrag(event: DragEvent, id: string): void {
+  suppressClick = true
+  event.dataTransfer?.setData('text/plain', `${COMPONENT_DRAG_PREFIX}${id}`)
+  if (event.dataTransfer) event.dataTransfer.effectAllowed = 'copy'
+}
+
+function onComponentClick(id: string): void {
+  if (suppressClick) {
+    suppressClick = false
+    return
+  }
+  store.openComponentDialog(id)
+}
 </script>
 
 <template>
@@ -57,6 +77,18 @@ const empty = computed(() => !showScene.value && meshes.value.length === 0 && ma
       >
         <span class="kind-icon mat"><Icon name="material" /></span>
         <span class="label">res://materials/{{ file.name }}.tsl</span>
+      </div>
+      <div v-if="components.length" class="group-label">res://components</div>
+      <div
+        v-for="file in components"
+        :key="file.id"
+        class="file-row"
+        draggable="true"
+        @click="onComponentClick(file.id)"
+        @dragstart="onComponentDrag($event, file.id)"
+      >
+        <span class="kind-icon component"><Icon name="component" /></span>
+        <span class="label">{{ file.path }}</span>
       </div>
     </div>
   </section>

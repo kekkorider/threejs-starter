@@ -1,8 +1,15 @@
 import * as THREE from 'three/webgpu'
 import { TransformControls } from 'three/addons/controls/TransformControls.js'
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
-import { ThreeContextEvents, destroy } from 'three-start'
-import type { ThreeStart } from 'three-start'
+import { ThreeContextEvents, addComponent, destroy, getComponents } from 'three-start'
+import type { Object3DBehaviour, Object3DBehaviourConstructor, ThreeStart } from 'three-start'
+import {
+  BUILTIN_COMPONENTS,
+  compileComponent,
+  componentTemplate,
+  uniqueIdentifier,
+  withClassName,
+} from './behaviors'
 
 import {
   buildGeometry,
@@ -70,7 +77,25 @@ export interface EditorNode {
   isRoot: boolean
   geometryId: string | null
   materialId: string | null
+  componentIds: string[]
   defaults: NodeDefaults
+}
+
+export interface ComponentResource {
+  id: string
+  name: string
+  source: string
+  builtin: boolean
+  ctor: Object3DBehaviourConstructor
+  error: string | null
+}
+
+export interface ComponentInstance {
+  id: string
+  name: string
+  resourceId: string
+  nodeId: string
+  behaviour: Object3DBehaviour
 }
 
 export interface GeometryResource {
@@ -178,6 +203,8 @@ export class EditorState {
   nodes = new Map<string, EditorNode>()
   geometries = new Map<string, GeometryResource>()
   materials = new Map<string, MaterialResource>()
+  components = new Map<string, ComponentResource>()
+  componentInstances = new Map<string, ComponentInstance>()
   rootId = ''
   selectedId: string | null = null
   tool: ToolMode = 'translate'
@@ -208,6 +235,20 @@ export class EditorState {
   private readonly tmp = new THREE.Vector3()
   private readonly tmpSize = new THREE.Vector3(0.5, 0.5, 0.5)
   private idCounter = 1
+
+  constructor() {
+    for (const builtin of BUILTIN_COMPONENTS) {
+      const id = `cmp${this.idCounter++}`
+      this.components.set(id, {
+        id,
+        name: builtin.name,
+        source: builtin.source,
+        builtin: true,
+        ctor: builtin.ctor,
+        error: null,
+      })
+    }
+  }
 
   log(message: string, level: LogLine['level'] = 'info'): void {
     const now = new Date()
@@ -583,6 +624,7 @@ export class EditorState {
     if (!node || node.isRoot) return
     const ids = this.collectIds(node)
     this.releaseLights(node.object)
+    for (const childId of ids) this.forgetNodeComponents(childId)
     destroy(node.object)
     for (const childId of ids) this.nodes.delete(childId)
     const parent = node.parentId ? this.nodes.get(node.parentId) : undefined
@@ -590,6 +632,103 @@ export class EditorState {
     this.dropOrphanResources()
     if (this.selectedId && !this.nodes.has(this.selectedId)) this.select(parent?.id ?? this.rootId)
     this.log(`Removed ${node.name}`)
+  }
+
+  createComponent(name: string, source: string): { id: string } | { error: string } {
+    const className = uniqueIdentifier(name, this.componentNames())
+    const nextSource = withClassName(source.trim() ? source : componentTemplate(className), className)
+    try {
+      const compiled = compileComponent(nextSource)
+      if (this.componentNames().has(compiled.name)) {
+        return { error: `A component named ${compiled.name} already exists.` }
+      }
+      const resource: ComponentResource = {
+        id: `cmp${this.idCounter++}`,
+        name: compiled.name,
+        source: withClassName(nextSource, compiled.name),
+        builtin: false,
+        ctor: compiled.ctor,
+        error: null,
+      }
+      this.components.set(resource.id, resource)
+      this.log(`Created component ${resource.name}`)
+      return { id: resource.id }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      this.log(message, 'error')
+      return { error: message }
+    }
+  }
+
+  updateComponentSource(id: string, source: string): string | null {
+    const resource = this.components.get(id)
+    if (!resource) return 'Component not found.'
+    if (resource.builtin) return 'Built-in components are read only. Create a new component to edit a copy.'
+    try {
+      const compiled = compileComponent(source)
+      if (compiled.name !== resource.name && this.componentNames().has(compiled.name)) {
+        return `A component named ${compiled.name} already exists.`
+      }
+      resource.name = compiled.name
+      resource.source = source
+      resource.ctor = compiled.ctor
+      resource.error = null
+      this.retargetInstances(resource)
+      this.log(`Updated ${resource.name}`)
+      return null
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      resource.error = message
+      this.log(message, 'error')
+      return message
+    }
+  }
+
+  attachComponent(resourceId: string, nodeId: string): ComponentInstance | null {
+    const resource = this.components.get(resourceId)
+    const node = this.nodes.get(nodeId)
+    if (!resource || !node) return null
+    try {
+      const behaviour = addComponent(node.object, resource.ctor)
+      const instance = this.trackInstance(node, resource, behaviour)
+      this.log(`Added ${resource.name} to ${node.name}`)
+      return instance
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      this.log(message, 'error')
+      return null
+    }
+  }
+
+  moveComponent(instanceId: string, nodeId: string): void {
+    const instance = this.componentInstances.get(instanceId)
+    const node = this.nodes.get(nodeId)
+    const resource = instance ? this.components.get(instance.resourceId) : undefined
+    if (!instance || !node || !resource || instance.nodeId === node.id) return
+    const previous = this.nodes.get(instance.nodeId)
+    destroy(instance.behaviour)
+    if (previous) previous.componentIds = previous.componentIds.filter((id) => id !== instance.id)
+    instance.behaviour = addComponent(node.object, resource.ctor)
+    instance.nodeId = node.id
+    instance.name = resource.name
+    node.componentIds.push(instance.id)
+    this.log(`Moved ${resource.name} to ${node.name}`)
+  }
+
+  removeComponent(instanceId: string): void {
+    const instance = this.componentInstances.get(instanceId)
+    if (!instance) return
+    const node = this.nodes.get(instance.nodeId)
+    destroy(instance.behaviour)
+    this.componentInstances.delete(instanceId)
+    if (node) node.componentIds = node.componentIds.filter((id) => id !== instanceId)
+    this.log(`Removed ${instance.name}${node ? ` from ${node.name}` : ''}`)
+  }
+
+  setComponentEnabled(instanceId: string, enabled: boolean): void {
+    const instance = this.componentInstances.get(instanceId)
+    if (!instance) return
+    instance.behaviour.setEnabled(enabled)
   }
 
   rename(id: string, name: string): void {
@@ -1265,6 +1404,80 @@ export class EditorState {
     }
   }
 
+  private componentNames(): Set<string> {
+    return new Set([...this.components.values()].map((resource) => resource.name))
+  }
+
+  private resourceByConstructor(ctor: Object3DBehaviourConstructor): ComponentResource | undefined {
+    for (const resource of this.components.values()) {
+      if (resource.ctor === ctor) return resource
+    }
+    return undefined
+  }
+
+  private trackInstance(node: EditorNode, resource: ComponentResource, behaviour: Object3DBehaviour): ComponentInstance {
+    const instance: ComponentInstance = {
+      id: `beh${this.idCounter++}`,
+      name: resource.name,
+      resourceId: resource.id,
+      nodeId: node.id,
+      behaviour,
+    }
+    this.componentInstances.set(instance.id, instance)
+    node.componentIds.push(instance.id)
+    return instance
+  }
+
+  private adoptComponents(node: EditorNode): void {
+    let list: Object3DBehaviour[] = []
+    try {
+      list = getComponents(node.object)
+    } catch {
+      return
+    }
+    for (const behaviour of list) {
+      const ctor = behaviour.constructor as Object3DBehaviourConstructor
+      let resource = this.resourceByConstructor(ctor)
+      if (!resource) {
+        const name = this.uniqueComponentName(ctor.name || 'Component')
+        resource = {
+          id: `cmp${this.idCounter++}`,
+          name,
+          source: `// ${name} was already attached to an object.\n`,
+          builtin: false,
+          ctor,
+          error: null,
+        }
+        this.components.set(resource.id, resource)
+      }
+      this.trackInstance(node, resource, behaviour)
+    }
+  }
+
+  private uniqueComponentName(raw: string): string {
+    return uniqueIdentifier(raw, this.componentNames())
+  }
+
+  private retargetInstances(resource: ComponentResource): void {
+    for (const instance of this.componentInstances.values()) {
+      if (instance.resourceId !== resource.id) continue
+      const node = this.nodes.get(instance.nodeId)
+      if (!node) continue
+      const enabled = instance.behaviour.enabled
+      destroy(instance.behaviour)
+      instance.behaviour = addComponent(node.object, resource.ctor)
+      instance.name = resource.name
+      if (!enabled) instance.behaviour.disable()
+    }
+  }
+
+  private forgetNodeComponents(nodeId: string): void {
+    const node = this.nodes.get(nodeId)
+    if (!node) return
+    for (const instanceId of node.componentIds) this.componentInstances.delete(instanceId)
+    node.componentIds = []
+  }
+
   private lightOf(id: string): THREE.Light | null {
     const node = this.nodes.get(id)
     return node?.object instanceof THREE.Light ? node.object : null
@@ -1288,6 +1501,7 @@ export class EditorState {
       isRoot,
       geometryId: null,
       materialId: null,
+      componentIds: [],
       defaults: this.defaultsFrom(object),
     }
     this.nodes.set(id, node)
@@ -1297,6 +1511,7 @@ export class EditorState {
       if ((child as THREE.Camera).isCamera) continue
       this.registerTree(child, id, true)
     }
+    this.adoptComponents(node)
     this.attachIcon(node)
     this.captureDefaults(node)
     return id
@@ -1317,6 +1532,7 @@ export class EditorState {
       isRoot: false,
       geometryId: null,
       materialId: null,
+      componentIds: [],
       defaults: this.defaultsFrom(object),
     }
     this.nodes.set(id, node)
@@ -1346,6 +1562,10 @@ export class EditorState {
     for (const childId of node.childIds) {
       const child = this.nodes.get(childId)
       if (child) this.cloneNode(child, copy.id)
+    }
+    for (const componentId of node.componentIds) {
+      const instance = this.componentInstances.get(componentId)
+      if (instance) this.attachComponent(instance.resourceId, copy.id)
     }
     return copy
   }

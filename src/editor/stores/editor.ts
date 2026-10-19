@@ -25,7 +25,27 @@ export interface NodeSnapshot {
   kind: NodeKind
   parentId: string | null
   childIds: string[]
+  componentIds: string[]
   isRoot: boolean
+}
+
+export interface ComponentFileSnapshot {
+  id: string
+  name: string
+  source: string
+  builtin: boolean
+  path: string
+}
+
+export interface ComponentInstanceSnapshot {
+  id: string
+  name: string
+  resourceId: string
+  nodeId: string
+  enabled: boolean
+  builtin: boolean
+  path: string
+  nodeName: string
 }
 
 export interface InspectorView {
@@ -125,6 +145,10 @@ export const useEditorStore = defineStore('editor', () => {
   const createKind = ref<NodeKind>('MeshInstance3D')
   const createPreset = ref('')
   const createNonce = ref(0)
+  const componentOpen = ref(false)
+  const componentFocusId = ref('')
+  const componentNonce = ref(0)
+  const selectedComponentId = ref<string | null>(null)
   const helpTopic = ref<'' | 'tsl' | 'shortcuts'>('')
   const popup = ref<PopupState | null>(null)
   const openMenuName = ref('')
@@ -144,6 +168,7 @@ export const useEditorStore = defineStore('editor', () => {
         kind: node.kind,
         parentId: node.parentId,
         childIds: [...node.childIds],
+        componentIds: [...node.componentIds],
         isRoot: node.isRoot,
       })
     }
@@ -164,6 +189,45 @@ export const useEditorStore = defineStore('editor', () => {
   const materialFiles = computed(() => {
     void revision.value
     return [...engine.materials.values()].map((material) => ({ id: material.id, name: material.name }))
+  })
+
+  const componentFiles = computed((): ComponentFileSnapshot[] => {
+    void revision.value
+    return [...engine.components.values()]
+      .map((resource) => ({
+        id: resource.id,
+        name: resource.name,
+        source: resource.source,
+        builtin: resource.builtin,
+        path: `res://components/${resource.name}.ts`,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name))
+  })
+
+  const componentById = computed(() => {
+    void revision.value
+    const map = new Map<string, ComponentInstanceSnapshot>()
+    for (const instance of engine.componentInstances.values()) {
+      const resource = engine.components.get(instance.resourceId)
+      if (!resource) continue
+      map.set(instance.id, {
+        id: instance.id,
+        name: resource.name,
+        resourceId: resource.id,
+        nodeId: instance.nodeId,
+        enabled: instance.behaviour.enabled,
+        builtin: resource.builtin,
+        path: `res://components/${resource.name}.ts`,
+        nodeName: engine.nodes.get(instance.nodeId)?.name ?? '',
+      })
+    }
+    return map
+  })
+
+  const selectedComponent = computed(() => {
+    const id = selectedComponentId.value
+    if (!id) return null
+    return componentById.value.get(id) ?? null
   })
 
   const selected = computed(() => {
@@ -293,12 +357,27 @@ export const useEditorStore = defineStore('editor', () => {
     const node = nodeById.value.get(id)
     if (!node) return false
     if (node.name.toLowerCase().includes(query)) return true
+    if (node.componentIds.some((componentId) => componentById.value.get(componentId)?.name.toLowerCase().includes(query))) return true
     return node.childIds.some((childId) => nodeMatches(childId, query))
   }
 
   function select(id: string | null): void {
+    selectedComponentId.value = null
     engine.select(id)
     touch()
+  }
+
+  function selectComponent(id: string): void {
+    const instance = engine.componentInstances.get(id)
+    if (!instance) return
+    selectedComponentId.value = id
+    engine.select(instance.nodeId)
+    touch()
+    const resource = engine.components.get(instance.resourceId)
+    if (resource) {
+      metaName.value = resource.name
+      metaTris.value = 0
+    }
   }
 
   function attach(starter: ThreeStart): void {
@@ -462,6 +541,10 @@ export const useEditorStore = defineStore('editor', () => {
   }
 
   function deleteSelection(): void {
+    if (selectedComponentId.value) {
+      removeComponent(selectedComponentId.value)
+      return
+    }
     const id = engine.selectedId
     if (!ready.value || !id) return
     engine.deleteNode(id)
@@ -746,7 +829,73 @@ export const useEditorStore = defineStore('editor', () => {
     createKind.value = kind
     createPreset.value = presetId ?? ''
     createNonce.value += 1
+    componentOpen.value = false
     createOpen.value = true
+  }
+
+  function openComponentDialog(resourceId = ''): void {
+    if (!ready.value) return
+    closePopups()
+    helpTopic.value = ''
+    createOpen.value = false
+    componentFocusId.value = resourceId
+    componentNonce.value += 1
+    componentOpen.value = true
+  }
+
+  function createComponent(name: string, source: string): { id: string } | { error: string } {
+    const result = engine.createComponent(name, source)
+    touch()
+    if ('id' in result) {
+      componentFocusId.value = result.id
+      expanded.value = new Set(expanded.value)
+    }
+    return result
+  }
+
+  function updateComponent(id: string, source: string): string | null {
+    const error = engine.updateComponentSource(id, source)
+    touch()
+    return error
+  }
+
+  function attachComponent(resourceId: string, nodeId: string): void {
+    const instance = engine.attachComponent(resourceId, nodeId)
+    if (!instance) {
+      touch()
+      bottomTab.value = 'output'
+      return
+    }
+    const opened = new Set(expanded.value)
+    opened.add(nodeId)
+    expanded.value = opened
+    selectedComponentId.value = instance.id
+    engine.select(nodeId)
+    touch()
+    metaName.value = instance.name
+  }
+
+  function moveComponent(instanceId: string, nodeId: string): void {
+    engine.moveComponent(instanceId, nodeId)
+    const opened = new Set(expanded.value)
+    opened.add(nodeId)
+    expanded.value = opened
+    selectedComponentId.value = instanceId
+    engine.select(nodeId)
+    touch()
+  }
+
+  function removeComponent(instanceId: string): void {
+    const instance = engine.componentInstances.get(instanceId)
+    engine.removeComponent(instanceId)
+    if (selectedComponentId.value === instanceId) selectedComponentId.value = null
+    if (instance) engine.select(instance.nodeId)
+    touch()
+  }
+
+  function setComponentEnabled(instanceId: string, enabled: boolean): void {
+    engine.setComponentEnabled(instanceId, enabled)
+    touch()
   }
 
   function createFromDraft(draft: CreateDraft): string | null {
@@ -800,6 +949,7 @@ export const useEditorStore = defineStore('editor', () => {
   function openHelp(topic: 'tsl' | 'shortcuts'): void {
     closePopups()
     createOpen.value = false
+    componentOpen.value = false
     helpTopic.value = topic
   }
 
@@ -859,6 +1009,7 @@ export const useEditorStore = defineStore('editor', () => {
     if (name === 'Scene') {
       return [
         { label: 'Create Node…', shortcut: 'Ctrl+A', action: () => openCreate() },
+        { label: 'Create Component…', shortcut: 'Ctrl+C', action: () => openComponentDialog() },
         { label: 'Duplicate', shortcut: 'Ctrl+D', disabled: locked, action: () => duplicateSelection() },
         { label: 'Rename', shortcut: 'F2', disabled: locked, action: () => current && beginRename(current.id) },
         { label: 'Delete', shortcut: 'Del', disabled: locked, action: () => deleteSelection() },
@@ -891,11 +1042,19 @@ export const useEditorStore = defineStore('editor', () => {
     if (!node) return
     showPopup(new DOMRect(x, y, 0, 0), [
       { label: 'Add Child Node…', action: () => openCreate() },
+      { label: 'Add Component…', action: () => openComponentDialog() },
       { label: 'Rename', disabled: node.isRoot, action: () => beginRename(id) },
       { label: 'Duplicate', disabled: node.isRoot, action: () => duplicateSelection() },
       { label: 'Delete', disabled: node.isRoot, action: () => deleteSelection() },
       { separator: true, label: '', action: () => {} },
       { label: 'Focus', disabled: node.isRoot, action: () => engine.focusSelected() },
+    ], false)
+  }
+
+  function openComponentMenu(id: string, x: number, y: number): void {
+    selectComponent(id)
+    showPopup(new DOMRect(x, y, 0, 0), [
+      { label: 'Remove Component', action: () => removeComponent(id) },
     ], false)
   }
 
@@ -973,6 +1132,10 @@ export const useEditorStore = defineStore('editor', () => {
       return
     }
     if (event.key === 'Escape' && !typing) {
+      if (componentOpen.value) {
+        componentOpen.value = false
+        return
+      }
       if (createOpen.value) {
         createOpen.value = false
         return
@@ -982,17 +1145,21 @@ export const useEditorStore = defineStore('editor', () => {
         return
       }
     }
-    if (typing || createOpen.value || helpTopic.value) return
+    if (typing || createOpen.value || componentOpen.value || helpTopic.value) return
     const key = event.key.toLowerCase()
     if ((event.ctrlKey || event.metaKey) && key === 'a') {
       event.preventDefault()
       openCreate()
+    } else if ((event.ctrlKey || event.metaKey) && key === 'c') {
+      event.preventDefault()
+      openComponentDialog()
     } else if ((event.ctrlKey || event.metaKey) && key === 'd') {
       event.preventDefault()
       duplicateSelection()
     } else if (event.key === 'Delete' || event.key === 'Backspace') {
       event.preventDefault()
-      deleteSelection()
+      if (selectedComponentId.value) removeComponent(selectedComponentId.value)
+      else deleteSelection()
     } else if (event.key === 'F2') {
       const id = engine.selectedId
       if (id) beginRename(id)
@@ -1052,6 +1219,10 @@ export const useEditorStore = defineStore('editor', () => {
     createKind,
     createPreset,
     createNonce,
+    componentOpen,
+    componentFocusId,
+    componentNonce,
+    selectedComponentId,
     helpTopic,
     popup,
     openMenuName,
@@ -1062,11 +1233,15 @@ export const useEditorStore = defineStore('editor', () => {
     nodeById,
     geometryFiles,
     materialFiles,
+    componentFiles,
+    componentById,
     selected,
+    selectedComponent,
     sceneSettings,
     gridSettings,
     nodeMatches,
     select,
+    selectComponent,
     attach,
     hideChrome,
     failBoot,
@@ -1136,6 +1311,13 @@ export const useEditorStore = defineStore('editor', () => {
     compileBound,
     openCreate,
     createFromDraft,
+    openComponentDialog,
+    createComponent,
+    updateComponent,
+    attachComponent,
+    moveComponent,
+    removeComponent,
+    setComponentEnabled,
     openHelp,
     closeHelp,
     selectMaterialFile,
@@ -1145,6 +1327,7 @@ export const useEditorStore = defineStore('editor', () => {
     openPropertyMenu,
     openMenu,
     openContextMenu,
+    openComponentMenu,
     openGeometryMenu,
     openMaterialMenu,
     onKeyDown,

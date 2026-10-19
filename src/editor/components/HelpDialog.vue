@@ -7,6 +7,7 @@ import { TSL_HELP } from '../tsl'
 const store = useEditorStore()
 
 const shortcuts = `Ctrl+A   Create node
+Ctrl+C   Create component
 Ctrl+D   Duplicate
 Ctrl+S   Apply TSL
 F2       Rename
@@ -19,6 +20,7 @@ F8       Stop
 Esc      Stop play, or close a dialog
 
 Drag a scene-tree row onto another node to reparent it.
+Drag a component from the File system, or from Create Component, onto an object to add it.
 Drag the colored x / y / z labels to scrub a value.`
 
 const title = computed(() => store.helpTopic === 'tsl' ? 'TSL Material Reference' : 'Editor Shortcuts')

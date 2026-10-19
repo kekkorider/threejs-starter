@@ -228,6 +228,7 @@
 .tree-row .kind-icon.node, .file-row .node { color: var(--node); }
 .tree-row .kind-icon.mesh, .file-row .mesh { color: var(--mesh); }
 .tree-row .kind-icon.light, .file-row .light { color: var(--light); }
+.tree-row .kind-icon.component, .file-row .component, .node-head .kind-icon.component { color: #7ec8e3; }
 .tree-row .kind-icon .ico, .file-row .ico { width: 14px; height: 14px; display: block; }
 .rename-input {
   height: 18px;
@@ -612,6 +613,8 @@
   align-items: center;
   justify-content: center;
 }
+.modal-back.is-passthrough { pointer-events: none; background: transparent; }
+.modal-back.is-passthrough .dialog { opacity: 0.35; }
 .dialog {
   width: min(920px, calc(100vw - 48px));
   height: min(640px, calc(100vh - 48px));
@@ -640,6 +643,7 @@
 .dialog-detail h2 { margin: 0; font-size: 18px; font-weight: 650; }
 .dialog-detail .desc { margin: 0; color: var(--font-dim); }
 .dialog-detail .code-editor { min-height: 180px; border: 1px solid #141414; border-radius: 4px; }
+.dialog-detail .code-editor.component-source { flex: 1; min-height: 240px; }
 .dialog-actions {
   height: 46px;
   display: flex;

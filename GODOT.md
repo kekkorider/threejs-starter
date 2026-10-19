@@ -61,6 +61,13 @@ When a feature lands, move it from **Not yet** into **Already in place**. Do not
 - Directional shadow coverage is wide enough for the floor. Spot and point lights cast shadows.
 - Point and spot energy stays bright out to Range instead of falling off with inverse-square decay.
 
+### Components
+
+- Components are three-start behaviors (`Object3DBehaviour`) stored as TypeScript files under `res://components`.
+- Create one from Scene → Create Component, Ctrl/Cmd+C, or a scene-tree right click → Add Component. The dialog matches Create New Node and also lists components that already exist, including Spin.
+- A new component file includes `onAwake`, `onStart`, `onEnable`, `onDisable`, `onUpdate`, `onBeforeRender`, `onAfterRender`, and `onDestroy`.
+- Drag a component from the File system, or from that dialog, onto any object in the scene tree to attach it. Drag it from one object onto another to move it.
+
 ## Not yet
 
 Build these in an order that keeps the editor usable. A half-wired Godot feature is worse than leaving it off.
@@ -103,8 +110,7 @@ Build these in an order that keeps the editor usable. A half-wired Godot feature
 
 ### Scripts
 
-- TSL is the material script. Node behavior scripts are not in place.
-- A script dock that edits the script attached to the selected node, with the same open-and-save habits as Godot.
+- TSL remains the material script. A Godot-style script dock for the selected node is not in place.
 
 ### Simulation
 
