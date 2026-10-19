@@ -170,13 +170,13 @@ if (store.componentFocusId) choose(store.componentFocusId)
             <h2>Component</h2>
             <div class="inherits" style="padding: 0">Object3DBehaviour</div>
             <p class="desc">A three-start behavior. Creating it writes a TypeScript file with the lifecycle methods. Drag it onto an object to attach it.</p>
-            <CodeEditor v-model="draft.source" class="component-source" @change="onSourceChange" />
+            <CodeEditor v-model="draft.source" class="component-source" language="typescript" @change="onSourceChange" />
           </template>
           <template v-else-if="current">
             <h2>{{ current.name }}</h2>
             <div class="inherits" style="padding: 0">{{ current.path }}</div>
             <p class="desc">Add it to the selected object, or drag it onto any object in the scene tree.</p>
-            <CodeEditor v-model="draft.source" class="component-source" @change="onSourceChange" />
+            <CodeEditor v-model="draft.source" class="component-source" language="typescript" @change="onSourceChange" />
           </template>
           <div class="hint">{{ error }}</div>
         </div>

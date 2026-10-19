@@ -168,7 +168,9 @@ export const useEditorStore = defineStore('editor', () => {
   const activeScriptId = ref<string | null>(null)
   const scriptSource = ref('')
   const scriptStatus = ref('')
+  const scriptStatusKey = ref(0)
   const scriptError = ref(false)
+  const scriptDrafts = ref<Record<string, string>>({})
   const helpTopic = ref<'' | 'tsl' | 'shortcuts'>('')
   const popup = ref<PopupState | null>(null)
   const openMenuName = ref('')
@@ -176,7 +178,7 @@ export const useEditorStore = defineStore('editor', () => {
   const metaName = ref('')
   const metaTris = ref(0)
   let compileTimer = 0
-  let scriptTimer = 0
+  let scriptStatusTimer = 0
   let viewportBound = false
 
   const nodes = computed(() => {
@@ -963,6 +965,7 @@ export const useEditorStore = defineStore('editor', () => {
 
   function finishDeleteComponent(resourceId: string): void {
     engine.deleteComponent(resourceId)
+    dropScriptDraft(resourceId)
     openScriptIds.value = openScriptIds.value.filter((id) => id !== resourceId)
     if (activeScriptId.value === resourceId) {
       activeScriptId.value = openScriptIds.value.at(-1) ?? null
@@ -975,21 +978,55 @@ export const useEditorStore = defineStore('editor', () => {
     touch()
   }
 
+  function dropScriptDraft(id: string): void {
+    if (!(id in scriptDrafts.value)) return
+    const next = { ...scriptDrafts.value }
+    delete next[id]
+    scriptDrafts.value = next
+  }
+
+  function rememberDraft(id: string): void {
+    const saved = engine.components.get(id)?.source ?? ''
+    if (scriptSource.value === saved) {
+      dropScriptDraft(id)
+      return
+    }
+    scriptDrafts.value = { ...scriptDrafts.value, [id]: scriptSource.value }
+  }
+
   function syncScriptSource(): void {
-    const resource = activeScriptId.value ? engine.components.get(activeScriptId.value) : undefined
-    scriptSource.value = resource?.source ?? ''
+    const id = activeScriptId.value
+    const resource = id ? engine.components.get(id) : undefined
+    const draft = id !== null && Object.hasOwn(scriptDrafts.value, id) ? scriptDrafts.value[id] : undefined
+    scriptSource.value = draft ?? resource?.source ?? ''
     scriptStatus.value = ''
     scriptError.value = false
   }
+
+  const scriptDirty = computed(() => {
+    void revision.value
+    const id = activeScriptId.value
+    if (!id) return false
+    const saved = engine.components.get(id)?.source
+    return saved !== undefined && scriptSource.value !== saved
+  })
 
   function showScript(resourceId: string): void {
     if (!openScriptIds.value.includes(resourceId)) {
       openScriptIds.value = [...openScriptIds.value, resourceId]
     }
-    if (activeScriptId.value && activeScriptId.value !== resourceId) saveActiveScript(false)
+    if (activeScriptId.value && activeScriptId.value !== resourceId) rememberDraft(activeScriptId.value)
     activeScriptId.value = resourceId
     syncScriptSource()
     setScreen('script')
+  }
+
+  function closeScript(resourceId: string): void {
+    if (activeScriptId.value === resourceId) rememberDraft(resourceId)
+    openScriptIds.value = openScriptIds.value.filter((id) => id !== resourceId)
+    if (activeScriptId.value !== resourceId) return
+    activeScriptId.value = openScriptIds.value.at(-1) ?? null
+    syncScriptSource()
   }
 
   function editComponent(instanceId: string): void {
@@ -1001,17 +1038,34 @@ export const useEditorStore = defineStore('editor', () => {
   function saveActiveScript(log: boolean): void {
     const id = activeScriptId.value
     if (!id) return
+    window.clearTimeout(scriptStatusTimer)
     const error = engine.updateComponentSource(id, scriptSource.value)
     scriptStatus.value = error ?? 'Applied'
     scriptError.value = Boolean(error)
-    if (error && log) bottomTab.value = 'output'
+    scriptStatusKey.value += 1
+    if (error) {
+      if (log) bottomTab.value = 'output'
+    } else {
+      dropScriptDraft(id)
+      scriptStatusTimer = window.setTimeout(() => {
+        if (scriptStatus.value === 'Applied') scriptStatus.value = ''
+      }, 1400)
+    }
     touch()
   }
 
   function onScriptChange(source: string): void {
     scriptSource.value = source
-    window.clearTimeout(scriptTimer)
-    scriptTimer = window.setTimeout(() => saveActiveScript(false), 400)
+    const id = activeScriptId.value
+    if (!id) return
+    const saved = engine.components.get(id)?.source ?? ''
+    if (source === saved) dropScriptDraft(id)
+    else scriptDrafts.value = { ...scriptDrafts.value, [id]: source }
+    if (scriptStatus.value) {
+      window.clearTimeout(scriptStatusTimer)
+      scriptStatus.value = ''
+      scriptError.value = false
+    }
   }
 
   function createFromDraft(draft: CreateDraft): string | null {
@@ -1355,7 +1409,9 @@ export const useEditorStore = defineStore('editor', () => {
     activeScriptId,
     scriptSource,
     scriptStatus,
+    scriptStatusKey,
     scriptError,
+    scriptDirty,
     helpTopic,
     popup,
     openMenuName,
@@ -1459,6 +1515,7 @@ export const useEditorStore = defineStore('editor', () => {
     confirmDeleteComponent,
     editComponent,
     showScript,
+    closeScript,
     saveActiveScript,
     onScriptChange,
     openHelp,

@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from 'vue'
+import { highlightTypeScript } from '../highlight'
 import { highlightTSL } from '../tsl'
 
 const model = defineModel<string>({ required: true })
-defineProps<{ disabled?: boolean }>()
+const props = defineProps<{ disabled?: boolean, language?: 'tsl' | 'typescript' }>()
 const emit = defineEmits<{ change: [value: string] }>()
 
 const textarea = ref<HTMLTextAreaElement | null>(null)
@@ -12,7 +13,8 @@ const gutter = ref<HTMLElement | null>(null)
 
 const html = computed(() => {
   const value = model.value
-  return highlightTSL(value.endsWith('\n') || value.length === 0 ? `${value} ` : value)
+  const source = value.endsWith('\n') || value.length === 0 ? `${value} ` : value
+  return props.language === 'typescript' ? highlightTypeScript(source) : highlightTSL(source)
 })
 
 const lineNumbers = computed(() => {
@@ -34,18 +36,34 @@ function onScroll(): void {
   gutter.value.scrollTop = area.scrollTop
 }
 
-function onKeydown(event: KeyboardEvent): void {
-  if (event.key !== 'Tab' || !textarea.value) return
-  event.preventDefault()
+function replaceSelection(insert: string, cursor: number): void {
   const area = textarea.value
+  if (!area) return
   const start = area.selectionStart
   const end = area.selectionEnd
-  const next = `${area.value.slice(0, start)}  ${area.value.slice(end)}`
+  const next = `${area.value.slice(0, start)}${insert}${area.value.slice(end)}`
   model.value = next
   emit('change', next)
   void nextTick(() => {
-    area.selectionStart = area.selectionEnd = start + 2
+    area.selectionStart = area.selectionEnd = cursor
   })
+}
+
+function onKeydown(event: KeyboardEvent): void {
+  const area = textarea.value
+  if (!area || props.disabled) return
+  if (event.key === 'Tab') {
+    event.preventDefault()
+    replaceSelection('  ', area.selectionStart + 2)
+    return
+  }
+  if (event.key !== 'Enter' || event.ctrlKey || event.metaKey || event.altKey) return
+  event.preventDefault()
+  const start = area.selectionStart
+  const lineStart = area.value.lastIndexOf('\n', start - 1) + 1
+  const indent = /^[ \t]*/.exec(area.value.slice(lineStart, start))?.[0] ?? ''
+  const insert = `\n${indent}`
+  replaceSelection(insert, start + insert.length)
 }
 </script>
 
@@ -60,7 +78,7 @@ function onKeydown(event: KeyboardEvent): void {
         autocomplete="off"
         autocapitalize="off"
         wrap="off"
-        aria-label="TSL material source"
+        :aria-label="language === 'typescript' ? 'TypeScript source' : 'TSL material source'"
         :value="model"
         :disabled="disabled"
         @input="onInput"

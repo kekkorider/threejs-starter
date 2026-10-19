@@ -10,16 +10,6 @@ const active = computed(() => store.openScripts.find((file) => file.id === store
 
 <template>
   <div class="script-screen">
-    <div class="script-main">
-      <div class="tsl-bar">
-        <span class="name">{{ active ? active.path : 'No script' }}</span>
-        <span class="spacer" />
-        <span class="status" :class="store.scriptError ? 'error' : 'ok'">{{ store.scriptStatus }}</span>
-        <button type="button" class="btn" :disabled="!active" @click="store.saveActiveScript(true)">Apply</button>
-      </div>
-      <CodeEditor v-if="active" v-model="store.scriptSource" @change="store.onScriptChange" />
-      <div v-else class="empty-note script-empty">Double-click a component in the scene tree, or right-click it and choose Edit.</div>
-    </div>
     <aside class="script-files">
       <div class="dock-title">Open scripts</div>
       <div class="tree">
@@ -33,11 +23,26 @@ const active = computed(() => store.openScripts.find((file) => file.id === store
         >
           <span class="kind-icon component"><Icon name="component" /></span>
           <span class="label">{{ file.name }}.ts</span>
-          <button type="button" class="icon-btn danger row-delete" title="Delete" @click.stop="store.requestDeleteComponent(file.id)">
-            <Icon name="delete" />
+          <button type="button" class="icon-btn row-close" title="Close" @click.stop="store.closeScript(file.id)">
+            <Icon name="close" />
           </button>
         </div>
       </div>
     </aside>
+    <div class="script-main">
+      <div class="tsl-bar">
+        <span class="name">{{ active ? active.path : 'No script' }}</span>
+        <span class="spacer" />
+        <span
+          v-if="store.scriptStatus"
+          :key="store.scriptStatusKey"
+          class="status"
+          :class="{ error: store.scriptError, ok: !store.scriptError, fade: store.scriptStatus === 'Applied' }"
+        >{{ store.scriptStatus }}</span>
+        <button type="button" class="btn" :disabled="!store.scriptDirty" @click="store.saveActiveScript(true)">Apply</button>
+      </div>
+      <CodeEditor v-if="active" v-model="store.scriptSource" language="typescript" @change="store.onScriptChange" />
+      <div v-else class="empty-note script-empty">Double-click a component in the scene tree, or right-click it and choose Edit.</div>
+    </div>
   </div>
 </template>
