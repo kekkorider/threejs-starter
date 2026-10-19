@@ -46,6 +46,58 @@ export function disposeLightIcon(object: THREE.Object3D): void {
   icon.removeFromParent()
 }
 
+/** Shaft and head along local -Z, which is the direction a directional or spot light shines. */
+export function attachLightArrow(object: THREE.Object3D): void {
+  if (object.getObjectByName('LightArrow')) return
+  const material = new THREE.MeshBasicNodeMaterial({
+    color: 0xffbf47,
+    depthTest: true,
+    toneMapped: false,
+  })
+  const arrow = new THREE.Group()
+  arrow.name = 'LightArrow'
+  arrow.userData.editorHidden = true
+  arrow.userData.lightArrow = true
+
+  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 1.15, 8), material)
+  shaft.rotation.x = -Math.PI / 2
+  shaft.position.z = -0.58
+  const head = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.36, 12), material)
+  head.rotation.x = -Math.PI / 2
+  head.position.z = -1.34
+  for (const part of [shaft, head]) {
+    part.userData.editorHidden = true
+    part.castShadow = false
+    part.raycast = () => {}
+  }
+  arrow.add(shaft, head)
+  object.add(arrow)
+}
+
+export function setLightArrowColor(object: THREE.Object3D, color: THREE.Color): void {
+  const arrow = object.getObjectByName('LightArrow')
+  const shaft = arrow?.children[0]
+  if (!(shaft instanceof THREE.Mesh)) return
+  const material = shaft.material
+  if (material instanceof THREE.MeshBasicNodeMaterial) material.color.copy(color)
+}
+
+export function disposeLightArrow(object: THREE.Object3D): void {
+  const arrow = object.getObjectByName('LightArrow')
+  if (!arrow) return
+  const disposed = new Set<THREE.Material>()
+  for (const child of [...arrow.children]) {
+    if (!(child instanceof THREE.Mesh)) continue
+    child.geometry.dispose()
+    const material = child.material
+    if (!Array.isArray(material) && !disposed.has(material)) {
+      disposed.add(material)
+      material.dispose()
+    }
+  }
+  arrow.removeFromParent()
+}
+
 function lightIconTexture(kind: LightIconKind): THREE.CanvasTexture {
   const existing = cache.get(kind)
   if (existing) return existing

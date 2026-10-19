@@ -309,6 +309,27 @@
   color: var(--font);
   outline: none;
 }
+.debug-legend {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  pointer-events: none;
+  z-index: 2;
+}
+.debug-legend span {
+  align-self: start;
+  justify-self: start;
+  margin: 46px 14px;
+  padding: 2px 7px;
+  width: max-content;
+  background: rgba(12, 12, 12, 0.72);
+  color: #f4f8ff;
+  border-radius: 3px;
+  font: 12px/1.4 "Segoe UI", "Noto Sans", Ubuntu, sans-serif;
+}
+.debug-legend span:nth-child(even) { justify-self: end; }
 .vp-meta {
   position: absolute;
   left: 10px;

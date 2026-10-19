@@ -15,28 +15,15 @@ import {
   ThreeStart,
   addComponent
 } from "three-start"
-import { MotionType } from 'crashcat'
-
-import type { RigidBodySettings } from 'crashcat'
-
 import { AssetLoaderModule } from './modules/AssetLoader'
 import { OrbitControlsModule } from './modules/OrbitControls'
 import { PhysicsModule } from './modules/Physics'
 import { InspectorModule } from './modules/Inspector'
 import { InputModule } from './modules/Input'
 
-import { NormalMaterial } from './materials/normal'
-import { MatcapMaterial } from './materials/matcap'
 import { ScaleMaterial } from './materials/scale'
-
 import { Spin } from './behaviors/Spin'
-import {
-  BodyBox,
-  type BodyBoxParams,
-  BodySphere,
-  type BodySphereParams,
-  BodyConvexHull
-} from './behaviors/physics'
+import { DEFAULT_FLAGS, compileTSLMaterial, presetById } from '../editor/tsl'
 
 //
 // Setup
@@ -53,7 +40,10 @@ starter.addModules({
 
 const { scene, renderer, camera, modules, scenePass, renderPipeline } = starter.ctx
 
-let applyShading: (mode: 'shaded' | 'debug') => void = () => {}
+let shadingMode: 'shaded' | 'debug' = 'shaded'
+let applyShading: (mode: 'shaded' | 'debug') => void = (mode) => {
+  shadingMode = mode
+}
 
 export function setViewportShading(mode: 'shaded' | 'debug'): void {
   applyShading(mode)
@@ -101,12 +91,17 @@ renderer.shadowMap.type = THREE.PCFShadowMap
 
 modules.assetLoader.createKTX2Loader()
 
-await modules.assetLoader.loadTextures(['/diamond-07.png', '/m.png'], { colorSpace: THREE.SRGBColorSpace })
-await modules.assetLoader.loadModels('/suzanne.glb')
-await modules.assetLoader.loadKTX('/2d_etc1s.ktx2', {
-  flipY: false,
-  colorSpace: THREE.SRGBColorSpace,
-})
+//
+// Floor. The UV preset paints albedo from mesh UVs and stays lit, so shadows show.
+//
+const floorMaterial = compileTSLMaterial(presetById('uv').source, { ...DEFAULT_FLAGS })
+floorMaterial.name = 'UV'
+const floor = new THREE.Mesh(new THREE.BoxGeometry(10, 0.5, 10), floorMaterial)
+floor.name = 'Floor'
+floor.position.set(0, 0, 0)
+floor.receiveShadow = true
+floor.castShadow = true
+scene.add(floor)
 
 //
 // Spinning cube
@@ -114,105 +109,14 @@ await modules.assetLoader.loadKTX('/2d_etc1s.ktx2', {
 const cube = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), ScaleMaterial)
 cube.name = 'Cube'
 cube.castShadow = true
+cube.position.set(0, 1.5, 0)
 addComponent(cube, Spin, { axis: 'y', speed: 1 })
 addComponent(cube, Spin, { axis: 'z', speed: 0.87 })
-cube.position.set(-1.5, 0.5, 0)
 scene.add(cube)
 
-//
-// Floor
-//
-// Lit standard material so the ground can show light and shadows. The previous
-// normal material ignores every light, which made shadows look broken.
-const floorMaterial = new THREE.MeshStandardNodeMaterial({
-  color: 0x9aa3b2,
-  roughness: 0.92,
-  metalness: 0,
-})
-const floor = new THREE.Mesh(new THREE.BoxGeometry(10, 0.5, 10), floorMaterial)
-floor.name = 'Floor'
-floor.position.y = -2
-floor.castShadow = true
-floor.receiveShadow = true
-
-addComponent(floor, BodyBox, {
-  motionType: MotionType.STATIC,
-} as RigidBodySettings, {
-  width: 10.2,
-  height: 0.52,
-  depth: 10.2
-} as BodyBoxParams)
-
-scene.add(floor)
-
-//
-// Suzanne GLB model
-//
-const suzanne = modules.assetLoader.getModel('suzanne')!.scene.getObjectByName('Suzanne') as THREE.Mesh
-suzanne.name = 'Suzanne'
-suzanne.position.x = 1.5
-suzanne.geometry.scale(1.3, 1.3, 1.3)
-MatcapMaterial.matcap = modules.assetLoader.getTexture('m')!
-suzanne.material = MatcapMaterial
-suzanne.castShadow = true
-addComponent(suzanne, BodyConvexHull, {
-  mass: 1,
-  motionType: MotionType.DYNAMIC,
-  restitution: 0.65,
-  friction: 0.3
-} as RigidBodySettings)
-scene.add(suzanne)
-
-//
-// Physics cube
-//
-const physicsCubeMaterial = new THREE.MeshBasicNodeMaterial({
-  map: modules.assetLoader.getKTX('2d_etc1s')
-})
-
-console.log(physicsCubeMaterial.map)
-const physicsCube = new THREE.Mesh(new THREE.BoxGeometry(0.75, 1, 1), physicsCubeMaterial)
-physicsCube.name = 'PhysicsCube'
-physicsCube.castShadow = true
-physicsCube.position.x = -1.5
-physicsCube.position.y = 1.3
-physicsCube.position.z = -1
-physicsCube.rotation.z = Math.PI * Math.random()
-physicsCube.rotation.x = Math.PI * Math.random()
-
-addComponent(physicsCube, BodyBox, {
-  motionType: MotionType.DYNAMIC,
-  restitution: 0.6,
-  friction: 0,
-  mass: 1
-} as RigidBodySettings, {
-  width: 1,
-  height: 1,
-  depth: 1
-} as BodyBoxParams)
-scene.add(physicsCube)
-
-//
-// Physics sphere
-//
-const physicsSphere = new THREE.Mesh(new THREE.SphereGeometry(0.5), NormalMaterial)
-physicsSphere.name = 'PhysicsSphere'
-physicsSphere.castShadow = true
-physicsSphere.position.x = 1
-physicsSphere.position.y = 2
-physicsSphere.position.z = -2.5
-
-addComponent(physicsSphere, BodySphere, {
-  motionType: MotionType.DYNAMIC,
-  restitution: .8
-} as RigidBodySettings, {
-    radius: 0.55
-} as BodySphereParams)
-scene.add(physicsSphere)
-
 camera.position.set(6.2, 4.2, 7.4)
-camera.lookAt(0, 0.6, 0)
-modules.orbitControls.controls.target.set(0, 0.6, 0)
+camera.lookAt(0, 0, 0)
+modules.orbitControls.controls.target.set(0, 0, 0)
 modules.orbitControls.controls.update()
 
 const hideProfiler = () => {
@@ -250,7 +154,10 @@ function createPostProcessing(): void {
 
   const shadedNode = scenePassColor.renderOutput()
   applyShading = (mode) => {
+    shadingMode = mode
     renderPipeline.outputNode = mode === 'debug' ? debugNode : shadedNode
+    // Assigning outputNode does not rebuild the pipeline on its own.
+    renderPipeline.needsUpdate = true
   }
-  applyShading('shaded')
+  applyShading(shadingMode)
 }

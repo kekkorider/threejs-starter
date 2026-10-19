@@ -50,7 +50,13 @@ function onShading(event: Event): void {
         <option value="front">Front</option>
         <option value="right">Right</option>
       </select>
-      <select title="Viewport shading" :value="store.shading" @change="onShading">
+      <select
+        :title="store.shading === 'debug'
+          ? 'Debug Split divides the view into four: color, depth, normals, and velocity.'
+          : 'Shaded is the scene. Debug Split shows color, depth, normals, and velocity.'"
+        :value="store.shading"
+        @change="onShading"
+      >
         <option value="shaded">Shaded</option>
         <option value="debug">Debug Split</option>
       </select>

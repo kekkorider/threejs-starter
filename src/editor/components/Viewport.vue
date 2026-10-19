@@ -20,6 +20,12 @@ useMountedScene(
   <div class="viewport-wrap">
     <div ref="host" class="viewport" />
     <ViewportToolbar />
+    <div v-if="store.shading === 'debug'" class="debug-legend">
+      <span>Color</span>
+      <span>Depth</span>
+      <span>Normals</span>
+      <span>Velocity</span>
+    </div>
     <div class="vp-meta">
       <template v-if="store.metaName">
         <strong>{{ store.metaName }}</strong><span v-if="store.metaTris"> · {{ store.metaTris }} tris</span>

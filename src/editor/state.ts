@@ -11,7 +11,7 @@ import {
   geometryEntry,
   type GeometryType,
 } from './geometry'
-import { attachLightIcon, disposeLightIcon, type LightIconKind } from './lightIcons'
+import { attachLightArrow, attachLightIcon, disposeLightArrow, disposeLightIcon, setLightArrowColor, type LightIconKind } from './lightIcons'
 import {
   DEFAULT_FLAGS,
   applyMaterialFlags,
@@ -1387,6 +1387,7 @@ export class EditorState {
     const kind = iconKind(node.kind)
     if (!kind) return
     attachLightIcon(node.object, kind)
+    if (kind === 'directional' || kind === 'spot') attachLightArrow(node.object)
   }
 
   private updateLightIcons(): void {
@@ -1395,9 +1396,15 @@ export class EditorState {
     const height = this.starter?.ctx.renderer.domElement.clientHeight || 800
     const fov = camera ? THREE.MathUtils.degToRad(camera.fov) : 1
     for (const node of this.nodes.values()) {
+      const show = visible && node.object.visible
+      const arrow = node.object.getObjectByName('LightArrow')
+      if (arrow) {
+        arrow.visible = show
+        if (node.object instanceof THREE.Light) setLightArrowColor(node.object, node.object.color)
+      }
       const icon = node.object.getObjectByName('LightIcon')
       if (!icon) continue
-      icon.visible = visible && node.object.visible
+      icon.visible = show
       if (!icon.visible || !camera) continue
       node.object.getWorldPosition(this.tmp)
       const distance = Math.max(camera.position.distanceTo(this.tmp), 0.5)
@@ -1407,25 +1414,30 @@ export class EditorState {
   }
 
   private measureBounds(object: THREE.Object3D, target: THREE.Box3): THREE.Box3 {
-    const icon = object.getObjectByName('LightIcon')
-    const was = icon?.visible ?? false
-    if (icon) icon.visible = false
+    const hidden: { object: THREE.Object3D, visible: boolean }[] = []
+    for (const name of ['LightIcon', 'LightArrow']) {
+      const child = object.getObjectByName(name)
+      if (!child) continue
+      hidden.push({ object: child, visible: child.visible })
+      child.visible = false
+    }
     target.setFromObject(object)
-    if (icon) icon.visible = was
+    for (const entry of hidden) entry.object.visible = entry.visible
     return target
   }
 
   private releaseLights(object: THREE.Object3D): void {
     const lights: THREE.Object3D[] = []
     object.traverse((child) => {
-      if (child.userData.lightIcon) return
-      if (child.getObjectByName('LightIcon') || child instanceof THREE.DirectionalLight || child instanceof THREE.SpotLight) {
+      if (child.userData.lightIcon || child.userData.lightArrow) return
+      if (child.getObjectByName('LightIcon') || child.getObjectByName('LightArrow') || child instanceof THREE.DirectionalLight || child instanceof THREE.SpotLight) {
         lights.push(child)
       }
     })
     for (const light of lights) {
       if (light instanceof THREE.DirectionalLight || light instanceof THREE.SpotLight) light.target.removeFromParent()
       disposeLightIcon(light)
+      disposeLightArrow(light)
     }
   }
 
