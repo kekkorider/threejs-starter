@@ -2,6 +2,7 @@
 import { onBeforeUnmount, onMounted, reactive } from 'vue'
 import AssetLibrary from '../components/AssetLibrary.vue'
 import BottomPanel from '../components/BottomPanel.vue'
+import ComponentWarning from '../components/ComponentWarning.vue'
 import CreateComponentDialog from '../components/CreateComponentDialog.vue'
 import CreateNodeDialog from '../components/CreateNodeDialog.vue'
 import FileDock from '../components/FileDock.vue'
@@ -10,6 +11,7 @@ import Icon from '../components/Icon.vue'
 import InspectorDock from '../components/InspectorDock.vue'
 import PopupMenu from '../components/PopupMenu.vue'
 import SceneDock from '../components/SceneDock.vue'
+import ScriptScreen from '../components/ScriptScreen.vue'
 import TopBar from '../components/TopBar.vue'
 import Viewport from '../components/Viewport.vue'
 import { useEditorStore } from '../stores/editor'
@@ -103,7 +105,9 @@ onBeforeUnmount(() => {
         <div class="center-body">
           <div class="stage">
             <Viewport />
-            <div id="script-code-host" class="placeholder script-stage screen-script" />
+            <div class="placeholder script-stage screen-script">
+              <ScriptScreen />
+            </div>
             <AssetLibrary />
           </div>
           <div
@@ -130,6 +134,7 @@ onBeforeUnmount(() => {
     />
     <CreateNodeDialog v-if="store.createOpen" :key="store.createNonce" />
     <CreateComponentDialog v-if="store.componentOpen" :key="store.componentNonce" />
+    <ComponentWarning />
     <HelpDialog v-if="store.helpTopic" />
   </div>
 </template>

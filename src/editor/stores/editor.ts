@@ -6,6 +6,7 @@ import type { ThreeStart } from 'three-start'
 import { GEOMETRY_CATALOG, triangleCount, type GeometryType } from '../geometry'
 import type { NodeKind, ToolMode } from '../state'
 import { EditorState, NODE_TYPES, type EditorNode, type GridSettings, type LogLine, type SceneSettings, type ShadowTypeName } from '../state'
+import type { ComponentParameter } from '../behaviors'
 import { DEFAULT_FLAGS, TSL_PRESETS, matchingPresetId, type MaterialSide } from '../tsl'
 import { setViewportShading } from '../../webgl'
 
@@ -46,6 +47,19 @@ export interface ComponentInstanceSnapshot {
   builtin: boolean
   path: string
   nodeName: string
+  parameters: ComponentParameter[]
+}
+
+export interface ComponentUse {
+  id: string
+  objectName: string
+  componentName: string
+}
+
+export interface ComponentWarning {
+  resourceId: string
+  name: string
+  uses: ComponentUse[]
 }
 
 export interface InspectorView {
@@ -149,6 +163,12 @@ export const useEditorStore = defineStore('editor', () => {
   const componentFocusId = ref('')
   const componentNonce = ref(0)
   const selectedComponentId = ref<string | null>(null)
+  const componentWarning = ref<ComponentWarning | null>(null)
+  const openScriptIds = ref<string[]>([])
+  const activeScriptId = ref<string | null>(null)
+  const scriptSource = ref('')
+  const scriptStatus = ref('')
+  const scriptError = ref(false)
   const helpTopic = ref<'' | 'tsl' | 'shortcuts'>('')
   const popup = ref<PopupState | null>(null)
   const openMenuName = ref('')
@@ -156,6 +176,7 @@ export const useEditorStore = defineStore('editor', () => {
   const metaName = ref('')
   const metaTris = ref(0)
   let compileTimer = 0
+  let scriptTimer = 0
   let viewportBound = false
 
   const nodes = computed(() => {
@@ -219,6 +240,7 @@ export const useEditorStore = defineStore('editor', () => {
         builtin: resource.builtin,
         path: `res://components/${resource.name}.ts`,
         nodeName: engine.nodes.get(instance.nodeId)?.name ?? '',
+        parameters: engine.parametersOf(instance.id),
       })
     }
     return map
@@ -228,6 +250,14 @@ export const useEditorStore = defineStore('editor', () => {
     const id = selectedComponentId.value
     if (!id) return null
     return componentById.value.get(id) ?? null
+  })
+
+  const openScripts = computed(() => {
+    const files = componentFiles.value
+    return openScriptIds.value.flatMap((id) => {
+      const file = files.find((item) => item.id === id)
+      return file ? [file] : []
+    })
   })
 
   const selected = computed(() => {
@@ -898,6 +928,92 @@ export const useEditorStore = defineStore('editor', () => {
     touch()
   }
 
+  function setComponentParameter(instanceId: string, key: string, value: number | string | boolean): void {
+    engine.setComponentParameter(instanceId, key, value)
+    touch()
+  }
+
+  function addComponentToSelection(resourceId: string): void {
+    const nodeId = engine.selectedId || engine.rootId
+    if (!nodeId) return
+    attachComponent(resourceId, nodeId)
+    componentOpen.value = false
+  }
+
+  function requestDeleteComponent(resourceId: string): void {
+    const resource = engine.components.get(resourceId)
+    if (!resource) return
+    const uses = engine.usesOf(resourceId)
+    if (uses.length === 0) {
+      finishDeleteComponent(resourceId)
+      return
+    }
+    componentWarning.value = { resourceId, name: resource.name, uses }
+  }
+
+  function cancelDeleteComponent(): void {
+    componentWarning.value = null
+  }
+
+  function confirmDeleteComponent(): void {
+    const warning = componentWarning.value
+    if (!warning) return
+    finishDeleteComponent(warning.resourceId)
+  }
+
+  function finishDeleteComponent(resourceId: string): void {
+    engine.deleteComponent(resourceId)
+    openScriptIds.value = openScriptIds.value.filter((id) => id !== resourceId)
+    if (activeScriptId.value === resourceId) {
+      activeScriptId.value = openScriptIds.value.at(-1) ?? null
+      syncScriptSource()
+    }
+    if (selectedComponentId.value && !engine.componentInstances.has(selectedComponentId.value)) {
+      selectedComponentId.value = null
+    }
+    componentWarning.value = null
+    touch()
+  }
+
+  function syncScriptSource(): void {
+    const resource = activeScriptId.value ? engine.components.get(activeScriptId.value) : undefined
+    scriptSource.value = resource?.source ?? ''
+    scriptStatus.value = ''
+    scriptError.value = false
+  }
+
+  function showScript(resourceId: string): void {
+    if (!openScriptIds.value.includes(resourceId)) {
+      openScriptIds.value = [...openScriptIds.value, resourceId]
+    }
+    if (activeScriptId.value && activeScriptId.value !== resourceId) saveActiveScript(false)
+    activeScriptId.value = resourceId
+    syncScriptSource()
+    setScreen('script')
+  }
+
+  function editComponent(instanceId: string): void {
+    const instance = engine.componentInstances.get(instanceId)
+    if (!instance) return
+    showScript(instance.resourceId)
+  }
+
+  function saveActiveScript(log: boolean): void {
+    const id = activeScriptId.value
+    if (!id) return
+    const error = engine.updateComponentSource(id, scriptSource.value)
+    scriptStatus.value = error ?? 'Applied'
+    scriptError.value = Boolean(error)
+    if (error && log) bottomTab.value = 'output'
+    touch()
+  }
+
+  function onScriptChange(source: string): void {
+    scriptSource.value = source
+    window.clearTimeout(scriptTimer)
+    scriptTimer = window.setTimeout(() => saveActiveScript(false), 400)
+  }
+
   function createFromDraft(draft: CreateDraft): string | null {
     if (!ready.value) return 'Editor is not ready.'
     const parentId = engine.selectedId
@@ -1054,7 +1170,14 @@ export const useEditorStore = defineStore('editor', () => {
   function openComponentMenu(id: string, x: number, y: number): void {
     selectComponent(id)
     showPopup(new DOMRect(x, y, 0, 0), [
-      { label: 'Remove Component', action: () => removeComponent(id) },
+      { label: 'Edit', action: () => editComponent(id) },
+      { label: 'Delete', action: () => removeComponent(id) },
+    ], false)
+  }
+
+  function openComponentFileMenu(resourceId: string, x: number, y: number): void {
+    showPopup(new DOMRect(x, y, 0, 0), [
+      { label: 'Delete', action: () => requestDeleteComponent(resourceId) },
     ], false)
   }
 
@@ -1132,6 +1255,10 @@ export const useEditorStore = defineStore('editor', () => {
       return
     }
     if (event.key === 'Escape' && !typing) {
+      if (componentWarning.value) {
+        componentWarning.value = null
+        return
+      }
       if (componentOpen.value) {
         componentOpen.value = false
         return
@@ -1222,7 +1349,13 @@ export const useEditorStore = defineStore('editor', () => {
     componentOpen,
     componentFocusId,
     componentNonce,
+    componentWarning,
     selectedComponentId,
+    openScriptIds,
+    activeScriptId,
+    scriptSource,
+    scriptStatus,
+    scriptError,
     helpTopic,
     popup,
     openMenuName,
@@ -1235,6 +1368,7 @@ export const useEditorStore = defineStore('editor', () => {
     materialFiles,
     componentFiles,
     componentById,
+    openScripts,
     selected,
     selectedComponent,
     sceneSettings,
@@ -1318,6 +1452,15 @@ export const useEditorStore = defineStore('editor', () => {
     moveComponent,
     removeComponent,
     setComponentEnabled,
+    setComponentParameter,
+    addComponentToSelection,
+    requestDeleteComponent,
+    cancelDeleteComponent,
+    confirmDeleteComponent,
+    editComponent,
+    showScript,
+    saveActiveScript,
+    onScriptChange,
     openHelp,
     closeHelp,
     selectMaterialFile,
@@ -1328,6 +1471,7 @@ export const useEditorStore = defineStore('editor', () => {
     openMenu,
     openContextMenu,
     openComponentMenu,
+    openComponentFileMenu,
     openGeometryMenu,
     openMaterialMenu,
     onKeyDown,

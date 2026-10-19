@@ -5,10 +5,14 @@ import { ThreeContextEvents, addComponent, destroy, getComponents } from 'three-
 import type { Object3DBehaviour, Object3DBehaviourConstructor, ThreeStart } from 'three-start'
 import {
   BUILTIN_COMPONENTS,
+  applyParameters,
   compileComponent,
   componentTemplate,
+  parameterFields,
+  readParameters,
   uniqueIdentifier,
   withClassName,
+  type ComponentParameter,
 } from './behaviors'
 
 import {
@@ -663,12 +667,12 @@ export class EditorState {
   updateComponentSource(id: string, source: string): string | null {
     const resource = this.components.get(id)
     if (!resource) return 'Component not found.'
-    if (resource.builtin) return 'Built-in components are read only. Create a new component to edit a copy.'
     try {
       const compiled = compileComponent(source)
       if (compiled.name !== resource.name && this.componentNames().has(compiled.name)) {
         return `A component named ${compiled.name} already exists.`
       }
+      resource.builtin = false
       resource.name = compiled.name
       resource.source = source
       resource.ctor = compiled.ctor
@@ -689,7 +693,7 @@ export class EditorState {
     const node = this.nodes.get(nodeId)
     if (!resource || !node) return null
     try {
-      const behaviour = addComponent(node.object, resource.ctor)
+      const behaviour = this.spawnBehaviour(node, resource)
       const instance = this.trackInstance(node, resource, behaviour)
       this.log(`Added ${resource.name} to ${node.name}`)
       return instance
@@ -706,9 +710,12 @@ export class EditorState {
     const resource = instance ? this.components.get(instance.resourceId) : undefined
     if (!instance || !node || !resource || instance.nodeId === node.id) return
     const previous = this.nodes.get(instance.nodeId)
+    const fields = parameterFields(instance.behaviour)
+    const enabled = instance.behaviour.enabled
     destroy(instance.behaviour)
     if (previous) previous.componentIds = previous.componentIds.filter((id) => id !== instance.id)
-    instance.behaviour = addComponent(node.object, resource.ctor)
+    instance.behaviour = this.spawnBehaviour(node, resource, fields)
+    if (!enabled) instance.behaviour.disable()
     instance.nodeId = node.id
     instance.name = resource.name
     node.componentIds.push(instance.id)
@@ -723,6 +730,42 @@ export class EditorState {
     this.componentInstances.delete(instanceId)
     if (node) node.componentIds = node.componentIds.filter((id) => id !== instanceId)
     this.log(`Removed ${instance.name}${node ? ` from ${node.name}` : ''}`)
+  }
+
+  usesOf(resourceId: string): { id: string, objectName: string, componentName: string }[] {
+    const resource = this.components.get(resourceId)
+    if (!resource) return []
+    const uses: { id: string, objectName: string, componentName: string }[] = []
+    for (const instance of this.componentInstances.values()) {
+      if (instance.resourceId !== resourceId) continue
+      uses.push({
+        id: instance.id,
+        objectName: this.nodes.get(instance.nodeId)?.name ?? 'Object',
+        componentName: resource.name,
+      })
+    }
+    return uses
+  }
+
+  deleteComponent(resourceId: string): void {
+    const resource = this.components.get(resourceId)
+    if (!resource) return
+    for (const instance of [...this.componentInstances.values()]) {
+      if (instance.resourceId === resourceId) this.removeComponent(instance.id)
+    }
+    this.components.delete(resourceId)
+    this.log(`Deleted ${resource.name}`)
+  }
+
+  parametersOf(instanceId: string): ComponentParameter[] {
+    const instance = this.componentInstances.get(instanceId)
+    return instance ? readParameters(instance.behaviour) : []
+  }
+
+  setComponentParameter(instanceId: string, key: string, value: number | string | boolean): void {
+    const instance = this.componentInstances.get(instanceId)
+    if (!instance) return
+    applyParameters(instance.behaviour, { [key]: value })
   }
 
   setComponentEnabled(instanceId: string, enabled: boolean): void {
@@ -1463,9 +1506,10 @@ export class EditorState {
       if (instance.resourceId !== resource.id) continue
       const node = this.nodes.get(instance.nodeId)
       if (!node) continue
+      const fields = parameterFields(instance.behaviour)
       const enabled = instance.behaviour.enabled
       destroy(instance.behaviour)
-      instance.behaviour = addComponent(node.object, resource.ctor)
+      instance.behaviour = this.spawnBehaviour(node, resource, fields)
       instance.name = resource.name
       if (!enabled) instance.behaviour.disable()
     }
@@ -1476,6 +1520,19 @@ export class EditorState {
     if (!node) return
     for (const instanceId of node.componentIds) this.componentInstances.delete(instanceId)
     node.componentIds = []
+  }
+
+  private spawnBehaviour(
+    node: EditorNode,
+    resource: ComponentResource,
+    fields?: Record<string, number | string | boolean>,
+  ): Object3DBehaviour {
+    const seeded = fields && Object.keys(fields).length > 0 && resource.ctor.length > 0
+    const behaviour = seeded
+      ? addComponent(node.object, resource.ctor, fields)
+      : addComponent(node.object, resource.ctor)
+    if (fields) applyParameters(behaviour, fields)
+    return behaviour
   }
 
   private lightOf(id: string): THREE.Light | null {

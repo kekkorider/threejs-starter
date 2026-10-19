@@ -85,10 +85,14 @@ function onComponentClick(id: string): void {
         class="file-row"
         draggable="true"
         @click="onComponentClick(file.id)"
+        @contextmenu.prevent="store.openComponentFileMenu(file.id, $event.clientX, $event.clientY)"
         @dragstart="onComponentDrag($event, file.id)"
       >
         <span class="kind-icon component"><Icon name="component" /></span>
         <span class="label">{{ file.path }}</span>
+        <button type="button" class="icon-btn danger row-delete" title="Delete" @click.stop="store.requestDeleteComponent(file.id)">
+          <Icon name="delete" />
+        </button>
       </div>
     </div>
   </section>

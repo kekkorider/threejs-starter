@@ -64,11 +64,28 @@ function submit(): void {
 }
 
 function save(): void {
-  if (!current.value || current.value.builtin) return
+  if (!current.value) return
   const message = store.updateComponent(current.value.id, draft.source)
   error.value = message ?? ''
   if (!message) sourceDirty.value = false
 }
+
+function addExisting(): void {
+  if (!current.value) return
+  if (sourceDirty.value) {
+    const message = store.updateComponent(current.value.id, draft.source)
+    if (message) {
+      error.value = message
+      return
+    }
+    sourceDirty.value = false
+  }
+  store.addComponentToSelection(current.value.id)
+}
+
+watch(current, (file) => {
+  if (selectedId.value !== 'new' && !file) choose('new')
+})
 
 function onKey(event: KeyboardEvent): void {
   if (event.key === 'Escape') {
@@ -135,11 +152,15 @@ if (store.componentFocusId) choose(store.componentFocusId)
                 style="padding-left: 12px"
                 draggable="true"
                 @click="choose(file.id)"
+                @dblclick="addExisting"
                 @dragstart="onDragStart($event, file.id)"
                 @dragend="onDragEnd"
               >
                 <span class="kind-icon component"><Icon name="component" /></span>
                 <span class="label">{{ file.name }}</span>
+                <button type="button" class="icon-btn danger row-delete" title="Delete" @click.stop="store.requestDeleteComponent(file.id)">
+                  <Icon name="delete" />
+                </button>
               </div>
             </template>
           </div>
@@ -154,8 +175,8 @@ if (store.componentFocusId) choose(store.componentFocusId)
           <template v-else-if="current">
             <h2>{{ current.name }}</h2>
             <div class="inherits" style="padding: 0">{{ current.path }}</div>
-            <p class="desc">Drag this component onto any object in the scene tree to add it.</p>
-            <CodeEditor v-model="draft.source" class="component-source" :disabled="current.builtin" @change="onSourceChange" />
+            <p class="desc">Add it to the selected object, or drag it onto any object in the scene tree.</p>
+            <CodeEditor v-model="draft.source" class="component-source" @change="onSourceChange" />
           </template>
           <div class="hint">{{ error }}</div>
         </div>
@@ -165,8 +186,10 @@ if (store.componentFocusId) choose(store.componentFocusId)
         <input v-model="draft.name" type="text" placeholder="Component" :disabled="!isNew" />
         <span class="spacer" />
         <button type="button" class="btn" @click="store.componentOpen = false">Cancel</button>
+        <button v-if="!isNew && current" type="button" class="btn" @click="store.requestDeleteComponent(current.id)">Delete</button>
+        <button v-if="!isNew && current && sourceDirty" type="button" class="btn" @click="save">Save</button>
         <button v-if="isNew" type="button" class="btn primary" @click="submit">Create</button>
-        <button v-else-if="current && !current.builtin" type="button" class="btn primary" :disabled="!sourceDirty" @click="save">Save</button>
+        <button v-else-if="current" type="button" class="btn primary" @click="addExisting">Add</button>
       </div>
     </div>
   </div>

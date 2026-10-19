@@ -122,6 +122,7 @@ function componentVisible(componentId: string): boolean {
         :style="{ paddingLeft: `${6 + (depth + 1) * 14}px` }"
         draggable="true"
         @click.stop="store.selectComponent(componentId)"
+        @dblclick.stop="store.editComponent(componentId)"
         @contextmenu.prevent.stop="store.openComponentMenu(componentId, $event.clientX, $event.clientY)"
         @dragstart="onInstanceDrag($event, componentId)"
         @dragover.stop.prevent="drop = true"

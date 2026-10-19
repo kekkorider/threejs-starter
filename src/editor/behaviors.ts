@@ -94,3 +94,39 @@ export function compileComponent(source: string): CompiledComponent {
     throw new Error(error instanceof Error ? error.message : String(error))
   }
 }
+
+const SKIPPED_FIELDS = new Set(['object', 'ctx', 'modules', 'enabled', 'isObject3DBehaviour'])
+
+export interface ComponentParameter {
+  key: string
+  kind: 'number' | 'string' | 'boolean'
+  value: number | string | boolean
+}
+
+export function readParameters(behaviour: object): ComponentParameter[] {
+  const params: ComponentParameter[] = []
+  for (const key of Object.keys(behaviour)) {
+    if (key.startsWith('_') || SKIPPED_FIELDS.has(key)) continue
+    const value = (behaviour as Record<string, unknown>)[key]
+    if (typeof value === 'number' && Number.isFinite(value)) params.push({ key, kind: 'number', value })
+    else if (typeof value === 'boolean') params.push({ key, kind: 'boolean', value })
+    else if (typeof value === 'string') params.push({ key, kind: 'string', value })
+  }
+  return params.sort((left, right) => left.key.localeCompare(right.key))
+}
+
+export function parameterFields(behaviour: object): Record<string, number | string | boolean> {
+  const fields: Record<string, number | string | boolean> = {}
+  for (const param of readParameters(behaviour)) fields[param.key] = param.value
+  return fields
+}
+
+export function applyParameters(behaviour: object, fields: Record<string, number | string | boolean>): void {
+  const target = behaviour as Record<string, unknown>
+  for (const [key, value] of Object.entries(fields)) {
+    if (key.startsWith('_') || SKIPPED_FIELDS.has(key)) continue
+    if (!(key in target)) continue
+    if (typeof target[key] !== typeof value) continue
+    target[key] = value
+  }
+}

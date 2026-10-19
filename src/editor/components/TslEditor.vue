@@ -22,8 +22,6 @@ function onPreset(event: Event): void {
       <span class="status" :class="store.tslError ? 'error' : 'ok'">{{ store.tslStatus }}</span>
       <button type="button" class="btn" :disabled="store.tslDisabled" @click="store.compileBound(true)">Apply</button>
     </div>
-    <Teleport to="#script-code-host" :disabled="store.screen !== 'script'">
-      <CodeEditor v-model="store.tslSource" :disabled="store.tslDisabled" @change="store.onTslChange" />
-    </Teleport>
+    <CodeEditor v-model="store.tslSource" :disabled="store.tslDisabled" @change="store.onTslChange" />
   </div>
 </template>

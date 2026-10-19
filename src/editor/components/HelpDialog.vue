@@ -20,7 +20,7 @@ F8       Stop
 Esc      Stop play, or close a dialog
 
 Drag a scene-tree row onto another node to reparent it.
-Drag a component from the File system, or from Create Component, onto an object to add it.
+Drag a component onto an object to add it. Double-click a component to edit it in the Script tab.
 Drag the colored x / y / z labels to scrub a value.`
 
 const title = computed(() => store.helpTopic === 'tsl' ? 'TSL Material Reference' : 'Editor Shortcuts')

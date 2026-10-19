@@ -64,9 +64,12 @@ When a feature lands, move it from **Not yet** into **Already in place**. Do not
 ### Components
 
 - Components are three-start behaviors (`Object3DBehaviour`) stored as TypeScript files under `res://components`.
-- Create one from Scene → Create Component, Ctrl/Cmd+C, or a scene-tree right click → Add Component. The dialog matches Create New Node and also lists components that already exist, including Spin.
+- Create one from Scene → Create Component, Ctrl/Cmd+C, or a scene-tree right click → Add Component. The dialog matches Create New Node, lists components that already exist, and can add the selected one to the current object.
 - A new component file includes `onAwake`, `onStart`, `onEnable`, `onDisable`, `onUpdate`, `onBeforeRender`, `onAfterRender`, and `onDestroy`.
 - Drag a component from the File system, or from that dialog, onto any object in the scene tree to attach it. Drag it from one object onto another to move it.
+- Delete a component from the create dialog, the File system, or the Script tab. If any object uses it, a warning lists those components before it is removed.
+- Double-click a component in the scene tree, or right-click it and choose Edit, to open it in the Script tab. That tab keeps a sidebar of the open scripts.
+- The inspector edits a component's parameters, such as Spin's axis and speed.
 
 ## Not yet
 
