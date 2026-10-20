@@ -9,7 +9,9 @@ const store = useEditorStore()
 const shortcuts = `Ctrl+A   Create node
 Ctrl+C   Create component
 Ctrl+D   Duplicate
-Ctrl+S   Apply TSL
+Ctrl+S        Apply TSL
+Ctrl+Shift+S  Save scene
+Ctrl+Shift+L  Load scene
 F2       Rename
 Del      Delete
 F        Focus selection

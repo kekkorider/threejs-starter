@@ -7,6 +7,7 @@ import { GEOMETRY_CATALOG, triangleCount, type GeometryType } from '../geometry'
 import type { NodeKind, ToolMode } from '../state'
 import { EditorState, NODE_TYPES, type EditorNode, type GridSettings, type LogLine, type SceneSettings, type ShadowTypeName } from '../state'
 import type { ComponentParameter } from '../behaviors'
+import { sceneFileName } from '../sceneFile'
 import { DEFAULT_FLAGS, TSL_PRESETS, matchingPresetId, type MaterialSide } from '../tsl'
 import { setViewportShading } from '../../webgl'
 
@@ -175,6 +176,9 @@ export const useEditorStore = defineStore('editor', () => {
   const popup = ref<PopupState | null>(null)
   const openMenuName = ref('')
   const transformTick = ref(0)
+  const scenePath = ref(engine.scenePath)
+  const sceneDirty = ref(true)
+  const sceneSaved = ref(false)
   const metaName = ref('')
   const metaTris = ref(0)
   let compileTimer = 0
@@ -262,6 +266,11 @@ export const useEditorStore = defineStore('editor', () => {
     })
   })
 
+  const sceneLabel = computed(() => {
+    const name = sceneFileName(scenePath.value)
+    return sceneDirty.value ? `${name} (*)` : name
+  })
+
   const selected = computed(() => {
     void revision.value
     const id = selectedId.value
@@ -345,6 +354,9 @@ export const useEditorStore = defineStore('editor', () => {
     space.value = engine.space
     snap.value = engine.snap
     logs.value = engine.logs.slice()
+    scenePath.value = engine.scenePath
+    sceneDirty.value = engine.sceneDirty
+    sceneSaved.value = engine.hasSavedScene()
     revision.value += 1
     syncMaterial(forceMaterial)
     writeMeta()
@@ -421,6 +433,7 @@ export const useEditorStore = defineStore('editor', () => {
       engine.select(engine.rootId)
       bindViewport(starter)
       starter.ctx.on(ThreeContextEvents.Update, () => {
+        sceneDirty.value = engine.sceneDirty
         if (!engine.chromeVisible || screen.value === 'game') return
         transformTick.value += 1
       })
@@ -471,6 +484,8 @@ export const useEditorStore = defineStore('editor', () => {
     })
     engine.controls?.addEventListener('objectChange', () => {
       transformTick.value += 1
+      engine.markDirty()
+      sceneDirty.value = true
     })
   }
 
@@ -854,6 +869,28 @@ export const useEditorStore = defineStore('editor', () => {
     }
   }
 
+  function rememberExpanded(): void {
+    const next = new Set<string>()
+    for (const node of engine.nodes.values()) next.add(node.id)
+    expanded.value = next
+  }
+
+  function saveOpenScene(): void {
+    const saved = engine.saveOpenScene()
+    touch(true)
+    if (!saved) bottomTab.value = 'output'
+  }
+
+  function loadOpenScene(): void {
+    const loaded = engine.loadOpenScene()
+    if (loaded) {
+      rememberExpanded()
+      selectedComponentId.value = null
+    }
+    touch(true)
+    if (!loaded) bottomTab.value = 'output'
+  }
+
   function openCreate(kind: NodeKind = 'MeshInstance3D', presetId?: string): void {
     if (!ready.value) return
     closePopups()
@@ -1178,6 +1215,9 @@ export const useEditorStore = defineStore('editor', () => {
     const locked = !current || current.isRoot
     if (name === 'Scene') {
       return [
+        { label: 'Save Scene', shortcut: 'Ctrl+Shift+S', action: () => saveOpenScene() },
+        { label: 'Load Scene', shortcut: 'Ctrl+Shift+L', disabled: !engine.hasSavedScene(), action: () => loadOpenScene() },
+        { separator: true, label: '', action: () => {} },
         { label: 'Create Node…', shortcut: 'Ctrl+A', action: () => openCreate() },
         { label: 'Create Component…', shortcut: 'Ctrl+C', action: () => openComponentDialog() },
         { label: 'Duplicate', shortcut: 'Ctrl+D', disabled: locked, action: () => duplicateSelection() },
@@ -1303,6 +1343,16 @@ export const useEditorStore = defineStore('editor', () => {
   function onKeyDown(event: KeyboardEvent): void {
     const target = event.target as HTMLElement | null
     const typing = !!target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
+    if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 's') {
+      event.preventDefault()
+      saveOpenScene()
+      return
+    }
+    if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'l') {
+      event.preventDefault()
+      loadOpenScene()
+      return
+    }
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
       event.preventDefault()
       compileBound(true)
@@ -1416,6 +1466,10 @@ export const useEditorStore = defineStore('editor', () => {
     popup,
     openMenuName,
     transformTick,
+    scenePath,
+    sceneDirty,
+    sceneSaved,
+    sceneLabel,
     metaName,
     metaTris,
     nodes,
@@ -1499,6 +1553,8 @@ export const useEditorStore = defineStore('editor', () => {
     applyNodePreset,
     onTslChange,
     compileBound,
+    saveOpenScene,
+    loadOpenScene,
     openCreate,
     createFromDraft,
     openComponentDialog,

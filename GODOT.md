@@ -48,6 +48,10 @@ When a feature lands, move it from **Not yet** into **Already in place**. Do not
 - On World: background color and intensity, environment intensity, shadows on or off, shadow type (Basic, PCF, VSM), and the grid.
 - Right-click a value and choose Reset to restore the value it was created with.
 
+### Scene file
+
+- Save Scene and Load Scene write the node tree, transforms, geometry, materials, light settings, component parameters, and the World background, shadows, and grid. The open scene is `res://World.tscn`. Ctrl+Shift+S saves it, and Ctrl+Shift+L loads it. The scene tab shows `(*)` until that save.
+
 ### Resources
 
 - Primitive meshes under `res://meshes`.
@@ -78,7 +82,6 @@ Build these in an order that keeps the editor usable. A half-wired Godot feature
 
 ### Scene file
 
-- Save and load the node tree, transforms, geometry, materials, and light settings.
 - A scene path that matches the File system (`res://World.tscn` is only a label today).
 - Instancing one scene inside another.
 

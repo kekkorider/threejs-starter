@@ -16,6 +16,7 @@ import {
 } from './behaviors'
 
 import {
+  GEOMETRY_CATALOG,
   buildGeometry,
   clampParam,
   defaultParams,
@@ -23,6 +24,17 @@ import {
   type GeometryType,
 } from './geometry'
 import { attachLightArrow, attachLightIcon, disposeLightArrow, disposeLightIcon, type LightIconKind } from './lightIcons'
+import {
+  OPEN_SCENE_PATH,
+  hasSceneFile,
+  readSceneFile,
+  writeSceneFile,
+  type SceneComponentRecord,
+  type SceneFile,
+  type SceneGeometryRecord,
+  type SceneMaterialRecord,
+  type SceneNodeRecord,
+} from './sceneFile'
 import {
   DEFAULT_FLAGS,
   applyMaterialFlags,
@@ -228,8 +240,14 @@ export class EditorState {
   controls: TransformControls | null = null
   /** Editor gizmos, grid, and selection are hidden on the plain scene route. */
   chromeVisible = false
+  /** res:// path of the scene open in the editor. */
+  scenePath = OPEN_SCENE_PATH
+  /** True after an edit that Save Scene has not written yet. */
+  sceneDirty = false
 
   private attached = false
+  /** Save and load mutate the tree without counting as a new edit. */
+  private restoring = false
   private scene: THREE.Scene | null = null
   private camera: THREE.PerspectiveCamera | null = null
   private grid: THREE.GridHelper | null = null
@@ -328,6 +346,56 @@ export class EditorState {
     setTimeout(hideProfiler, 400)
 
     this.log('Editor ready. Create a MeshInstance to define a geometry and a TSL material.')
+    const saved = readSceneFile(this.scenePath)
+    if (saved) {
+      try {
+        this.applyScene(saved)
+        this.log(`Loaded ${saved.path}`)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        this.log(`Could not load ${this.scenePath}: ${message}`, 'error')
+        this.sceneDirty = true
+      }
+    } else {
+      this.sceneDirty = true
+    }
+    return true
+  }
+
+  markDirty(): void {
+    this.touchScene()
+  }
+
+  hasSavedScene(): boolean {
+    return hasSceneFile(this.scenePath)
+  }
+
+  /** Write the open scene. Refuses while the simulation is playing so a spin does not get baked in. */
+  saveOpenScene(): boolean {
+    if (this.playing) {
+      this.log('Stop the scene before saving.', 'warn')
+      return false
+    }
+    const file = this.captureScene()
+    writeSceneFile(file)
+    this.sceneDirty = false
+    this.log(`Saved ${file.path}`)
+    return true
+  }
+
+  /** Replace the open scene with the saved file at `scenePath`. */
+  loadOpenScene(): boolean {
+    if (this.playing) {
+      this.log('Stop the scene before loading.', 'warn')
+      return false
+    }
+    const file = readSceneFile(this.scenePath)
+    if (!file) {
+      this.log(`No saved scene at ${this.scenePath}.`, 'warn')
+      return false
+    }
+    this.applyScene(file)
+    this.log(`Loaded ${file.path}`)
     return true
   }
 
@@ -384,61 +452,72 @@ export class EditorState {
     if (!scene) return
     if (scene.background instanceof THREE.Color) scene.background.set(color)
     else scene.background = new THREE.Color(color)
+    this.touchScene()
   }
 
   setBackgroundIntensity(value: number): void {
     if (!this.scene || !Number.isFinite(value)) return
     this.scene.backgroundIntensity = Math.max(0, value)
+    this.touchScene()
   }
 
   setEnvironmentIntensity(value: number): void {
     if (!this.scene || !Number.isFinite(value)) return
     this.scene.environmentIntensity = Math.max(0, value)
+    this.touchScene()
   }
 
   setShadows(enabled: boolean): void {
     const shadow = this.starter?.ctx.renderer.shadowMap
     if (!shadow) return
     shadow.enabled = enabled
+    this.touchScene()
   }
 
   setShadowType(name: ShadowTypeName): void {
     const shadow = this.starter?.ctx.renderer.shadowMap
     if (!shadow) return
     shadow.type = SHADOW_TYPE[name]
+    this.touchScene()
   }
 
   setGridVisible(visible: boolean): void {
     this.gridVisible = visible
     this.applyGridVisibility()
+    this.touchScene()
   }
 
   setGridSize(value: number): void {
     if (!Number.isFinite(value)) return
     this.gridSize = Math.min(400, Math.max(1, value))
     this.rebuildGrid()
+    this.touchScene()
   }
 
   setGridDivisions(value: number): void {
     if (!Number.isFinite(value)) return
     this.gridDivisions = Math.min(200, Math.max(1, Math.round(value)))
     this.rebuildGrid()
+    this.touchScene()
   }
 
   setGridCenter(color: string): void {
     this.gridCenter = color
     this.rebuildGrid()
+    this.touchScene()
   }
 
   setGridColor(color: string): void {
     this.gridColor = color
     this.rebuildGrid()
+    this.touchScene()
   }
 
   setGridPosition(axis: 'x' | 'y' | 'z', value: number): void {
     if (!Number.isFinite(value)) return
     this.gridPosition[axis] = value
     this.applyGridPosition()
+    this.touchScene()
   }
 
   resetGrid(field: 'visible' | 'size' | 'divisions' | 'center' | 'color' | 'position'): void {
@@ -450,6 +529,7 @@ export class EditorState {
     else {
       this.gridPosition.set(GRID_DEFAULTS.position.x, GRID_DEFAULTS.position.y, GRID_DEFAULTS.position.z)
       this.applyGridPosition()
+      this.touchScene()
     }
   }
 
@@ -623,7 +703,7 @@ export class EditorState {
     return copy
   }
 
-  deleteNode(id: string): void {
+  deleteNode(id: string, quiet = false): void {
     const node = this.nodes.get(id)
     if (!node || node.isRoot) return
     const ids = this.collectIds(node)
@@ -635,7 +715,8 @@ export class EditorState {
     if (parent) parent.childIds = parent.childIds.filter((childId) => childId !== id)
     this.dropOrphanResources()
     if (this.selectedId && !this.nodes.has(this.selectedId)) this.select(parent?.id ?? this.rootId)
-    this.log(`Removed ${node.name}`)
+    if (!quiet) this.log(`Removed ${node.name}`)
+    this.touchScene()
   }
 
   createComponent(name: string, source: string): { id: string } | { error: string } {
@@ -679,6 +760,7 @@ export class EditorState {
       resource.error = null
       this.retargetInstances(resource)
       this.log(`Updated ${resource.name}`)
+      this.touchScene()
       return null
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
@@ -688,14 +770,20 @@ export class EditorState {
     }
   }
 
-  attachComponent(resourceId: string, nodeId: string): ComponentInstance | null {
+  attachComponent(
+    resourceId: string,
+    nodeId: string,
+    fields?: Record<string, number | string | boolean>,
+    silent = false,
+  ): ComponentInstance | null {
     const resource = this.components.get(resourceId)
     const node = this.nodes.get(nodeId)
     if (!resource || !node) return null
     try {
-      const behaviour = this.spawnBehaviour(node, resource)
+      const behaviour = this.spawnBehaviour(node, resource, fields)
       const instance = this.trackInstance(node, resource, behaviour)
-      this.log(`Added ${resource.name} to ${node.name}`)
+      if (!silent) this.log(`Added ${resource.name} to ${node.name}`)
+      this.touchScene()
       return instance
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
@@ -720,6 +808,7 @@ export class EditorState {
     instance.name = resource.name
     node.componentIds.push(instance.id)
     this.log(`Moved ${resource.name} to ${node.name}`)
+    this.touchScene()
   }
 
   removeComponent(instanceId: string): void {
@@ -730,6 +819,7 @@ export class EditorState {
     this.componentInstances.delete(instanceId)
     if (node) node.componentIds = node.componentIds.filter((id) => id !== instanceId)
     this.log(`Removed ${instance.name}${node ? ` from ${node.name}` : ''}`)
+    this.touchScene()
   }
 
   usesOf(resourceId: string): { id: string, objectName: string, componentName: string }[] {
@@ -755,6 +845,7 @@ export class EditorState {
     }
     this.components.delete(resourceId)
     this.log(`Deleted ${resource.name}`)
+    this.touchScene()
   }
 
   parametersOf(instanceId: string): ComponentParameter[] {
@@ -766,12 +857,14 @@ export class EditorState {
     const instance = this.componentInstances.get(instanceId)
     if (!instance) return
     applyParameters(instance.behaviour, { [key]: value })
+    this.touchScene()
   }
 
   setComponentEnabled(instanceId: string, enabled: boolean): void {
     const instance = this.componentInstances.get(instanceId)
     if (!instance) return
     instance.behaviour.setEnabled(enabled)
+    this.touchScene()
   }
 
   rename(id: string, name: string): void {
@@ -780,6 +873,7 @@ export class EditorState {
     if (!node || !next || node.isRoot) return
     node.name = next
     node.object.name = next
+    this.touchScene()
   }
 
   reparent(id: string, parentId: string): void {
@@ -793,12 +887,14 @@ export class EditorState {
     node.parentId = parent.id
     parent.object.attach(node.object)
     this.log(`Moved ${node.name} under ${parent.name}`)
+    this.touchScene()
   }
 
   setPosition(id: string, axis: 'x' | 'y' | 'z', value: number): void {
     const node = this.nodes.get(id)
     if (!node || !Number.isFinite(value)) return
     node.object.position[axis] = value
+    this.touchScene()
   }
 
   setRotationDegrees(id: string, axis: 'x' | 'y' | 'z', degrees: number): void {
@@ -806,18 +902,21 @@ export class EditorState {
     if (!node || !Number.isFinite(degrees)) return
     node.object.rotation[axis] = THREE.MathUtils.degToRad(degrees)
     this.syncLookAtFromRotation(node.object)
+    this.touchScene()
   }
 
   setScale(id: string, axis: 'x' | 'y' | 'z', value: number): void {
     const node = this.nodes.get(id)
     if (!node || !Number.isFinite(value)) return
     node.object.scale[axis] = value === 0 ? 0.001 : value
+    this.touchScene()
   }
 
   setVisible(id: string, visible: boolean): void {
     const node = this.nodes.get(id)
     if (!node) return
     node.object.visible = visible
+    this.touchScene()
   }
 
   setCastShadow(id: string, enabled: boolean): void {
@@ -825,6 +924,7 @@ export class EditorState {
     const object = node?.object as THREE.Object3D & { castShadow?: boolean }
     if (!object || !('castShadow' in object)) return
     object.castShadow = enabled
+    this.touchScene()
   }
 
   setReceiveShadow(id: string, enabled: boolean): void {
@@ -832,6 +932,7 @@ export class EditorState {
     const mesh = node?.object
     if (!(mesh instanceof THREE.Mesh)) return
     mesh.receiveShadow = enabled
+    this.touchScene()
   }
 
   setGeometryType(nodeId: string, type: GeometryType): void {
@@ -841,6 +942,7 @@ export class EditorState {
     resource.params = defaultParams(type)
     resource.name = this.uniqueResourceName(geometryEntry(type).label, this.geometries, resource.id)
     this.rebuildGeometry(resource.id)
+    this.touchScene()
   }
 
   setGeometryParam(nodeId: string, key: string, value: number): void {
@@ -848,6 +950,7 @@ export class EditorState {
     if (!resource) return
     resource.params[key] = clampParam(resource.type, key, value)
     this.rebuildGeometry(resource.id)
+    this.touchScene()
   }
 
   resetGeometryType(nodeId: string): void {
@@ -856,6 +959,7 @@ export class EditorState {
     resource.type = resource.defaults.type
     resource.params = { ...resource.defaults.params }
     this.rebuildGeometry(resource.id)
+    this.touchScene()
   }
 
   resetGeometryParam(nodeId: string, key: string): void {
@@ -867,6 +971,7 @@ export class EditorState {
     if (value === undefined) return
     resource.params[key] = clampParam(resource.type, key, value)
     this.rebuildGeometry(resource.id)
+    this.touchScene()
   }
 
   assignGeometry(nodeId: string, geometryId: string): void {
@@ -875,6 +980,7 @@ export class EditorState {
     if (!node || node.kind !== 'MeshInstance3D' || !resource?.geometry) return
     node.geometryId = geometryId
     ;(node.object as THREE.Mesh).geometry = resource.geometry
+    this.touchScene()
   }
 
   makeGeometryUnique(nodeId: string): void {
@@ -900,6 +1006,7 @@ export class EditorState {
     const resource = this.materials.get(materialId)
     if (!resource) return
     resource.source = source
+    this.touchScene()
   }
 
   compileMaterial(materialId: string): { ok: true } | { ok: false, error: string } {
@@ -931,6 +1038,7 @@ export class EditorState {
     if (patch.transparent !== undefined) resource.transparent = patch.transparent
     if (patch.wireframe !== undefined) resource.wireframe = patch.wireframe
     if (resource.material) applyMaterialFlags(resource.material, this.flagsOf(resource))
+    this.touchScene()
   }
 
   setMaterialName(materialId: string, name: string): void {
@@ -939,6 +1047,7 @@ export class EditorState {
     if (!resource || !next) return
     resource.name = this.uniqueResourceName(next, this.materials, resource.id)
     if (resource.material) resource.material.name = resource.name
+    this.touchScene()
   }
 
   resetMaterialName(materialId: string): void {
@@ -953,6 +1062,7 @@ export class EditorState {
     resource.source = resource.defaults.source
     const compiled = this.compileMaterial(materialId)
     if (!compiled.ok) this.log(`${resource.name}: ${compiled.error}`, 'error')
+    this.touchScene()
   }
 
   resetMaterialFlag(materialId: string, flag: keyof MaterialFlags): void {
@@ -970,6 +1080,7 @@ export class EditorState {
     node.materialId = materialId
     node.imported = false
     ;(node.object as THREE.Mesh).material = resource.material
+    this.touchScene()
   }
 
   newMaterialFor(nodeId: string, presetId = 'lit'): MaterialResource | null {
@@ -1009,6 +1120,7 @@ export class EditorState {
     resource.source = preset.source
     const compiled = this.compileMaterial(materialId)
     if (!compiled.ok) this.log(`${resource.name}: ${compiled.error}`, 'error')
+    this.touchScene()
   }
 
   setLightColor(id: string, color: string, which: 'color' | 'ground' = 'color'): void {
@@ -1016,12 +1128,14 @@ export class EditorState {
     if (!light) return
     if (which === 'ground' && light instanceof THREE.HemisphereLight) light.groundColor.set(color)
     else light.color.set(color)
+    this.touchScene()
   }
 
   setLightIntensity(id: string, value: number): void {
     const light = this.lightOf(id)
     if (!light || !Number.isFinite(value)) return
     light.intensity = value
+    this.touchScene()
   }
 
   setLightRange(id: string, value: number): void {
@@ -1033,18 +1147,21 @@ export class EditorState {
       light.shadow.camera.far = Math.max(light.distance, 0.5)
       light.shadow.camera.updateProjectionMatrix()
     }
+    this.touchScene()
   }
 
   setSpotAngle(id: string, degrees: number): void {
     const light = this.lightOf(id)
     if (!(light instanceof THREE.SpotLight) || !Number.isFinite(degrees)) return
     light.angle = THREE.MathUtils.degToRad(Math.min(90, Math.max(1, degrees)))
+    this.touchScene()
   }
 
   setSpotPenumbra(id: string, value: number): void {
     const light = this.lightOf(id)
     if (!(light instanceof THREE.SpotLight) || !Number.isFinite(value)) return
     light.penumbra = Math.min(1, Math.max(0, value))
+    this.touchScene()
   }
 
   readLookAt(id: string): LookAtConfig | null {
@@ -1059,6 +1176,7 @@ export class EditorState {
     const look = this.ensureLookAt(light)
     look.enabled = enabled
     this.aimLight(light)
+    this.touchScene()
   }
 
   setLookAt(id: string, axis: 'x' | 'y' | 'z', value: number): void {
@@ -1069,6 +1187,7 @@ export class EditorState {
     look[axis] = value
     look.enabled = true
     this.aimLight(light)
+    this.touchScene()
   }
 
   resetLookAtEnabled(id: string): void {
@@ -1090,6 +1209,7 @@ export class EditorState {
     current.z = look.z
     current.enabled = true
     this.aimLight(light)
+    this.touchScene()
   }
 
   resetLight(id: string, field: 'color' | 'ground' | 'intensity' | 'range' | 'angle' | 'penumbra'): void {
@@ -1116,6 +1236,7 @@ export class EditorState {
       )
       this.syncLookAtFromRotation(node.object)
     } else node.object.scale.set(defaults.scale[0], defaults.scale[1], defaults.scale[2])
+    this.touchScene()
   }
 
   resetVisible(id: string): void {
@@ -1177,6 +1298,359 @@ export class EditorState {
       }
     }
     return null
+  }
+
+  private touchScene(): void {
+    if (this.restoring) return
+    this.sceneDirty = true
+  }
+
+  private captureScene(): SceneFile {
+    const geometries: SceneGeometryRecord[] = []
+    const materials: SceneMaterialRecord[] = []
+    const geometryFileIds = new Map<string, string>()
+    const materialFileIds = new Map<string, string>()
+    const looseGeometry = new Map<string, string>()
+    const looseMaterial = new Map<string, string>()
+    const takenNames = new Set<string>()
+    let geoCount = 0
+    let matCount = 0
+
+    const unique = (base: string): string => {
+      const cleaned = base.trim() || 'Resource'
+      if (!takenNames.has(cleaned)) {
+        takenNames.add(cleaned)
+        return cleaned
+      }
+      let index = 2
+      while (takenNames.has(`${cleaned}${index}`)) index += 1
+      const next = `${cleaned}${index}`
+      takenNames.add(next)
+      return next
+    }
+
+    const geometryIdFor = (node: EditorNode): string | null => {
+      if (node.kind !== 'MeshInstance3D' || !(node.object instanceof THREE.Mesh)) return null
+      if (node.geometryId && this.geometries.has(node.geometryId)) {
+        const existing = geometryFileIds.get(node.geometryId)
+        if (existing) return existing
+        const resource = this.geometries.get(node.geometryId)
+        if (!resource) return null
+        const id = `g${++geoCount}`
+        geometryFileIds.set(node.geometryId, id)
+        geometries.push({ id, name: unique(resource.name), type: resource.type, params: { ...resource.params } })
+        return id
+      }
+      const geometry = node.object.geometry
+      const cached = looseGeometry.get(geometry.uuid)
+      if (cached) return cached
+      const snapshot = geometrySnapshot(geometry)
+      if (!snapshot) {
+        this.log(`${node.name} has no editable geometry, so it will load as a box.`, 'warn')
+        return null
+      }
+      const id = `g${++geoCount}`
+      looseGeometry.set(geometry.uuid, id)
+      geometries.push({
+        id,
+        name: unique(geometry.name || geometryEntry(snapshot.type).label),
+        type: snapshot.type,
+        params: snapshot.params,
+      })
+      return id
+    }
+
+    const materialIdFor = (node: EditorNode): string | null => {
+      if (node.kind !== 'MeshInstance3D' || !(node.object instanceof THREE.Mesh)) return null
+      if (node.materialId && this.materials.has(node.materialId)) {
+        const existing = materialFileIds.get(node.materialId)
+        if (existing) return existing
+        const resource = this.materials.get(node.materialId)
+        if (!resource) return null
+        const id = `m${++matCount}`
+        materialFileIds.set(node.materialId, id)
+        materials.push({
+          id,
+          name: unique(resource.name),
+          source: resource.source,
+          side: resource.side,
+          transparent: resource.transparent,
+          wireframe: resource.wireframe,
+        })
+        return id
+      }
+      const material = node.object.material
+      if (Array.isArray(material)) {
+        this.log(`${node.name} uses more than one material. The saved scene keeps the first editable one.`, 'warn')
+      }
+      const single = Array.isArray(material) ? material[0] : material
+      if (!single) return null
+      const cached = looseMaterial.get(single.uuid)
+      if (cached) return cached
+      const snapshot = materialSnapshot(single)
+      if (!snapshot) {
+        this.log(`${node.name} has no TSL material, so it will load with the Lit preset.`, 'warn')
+        return null
+      }
+      const id = `m${++matCount}`
+      looseMaterial.set(single.uuid, id)
+      materials.push({
+        id,
+        name: unique(single.name || 'Material'),
+        source: snapshot.source,
+        side: snapshot.side,
+        transparent: snapshot.transparent,
+        wireframe: snapshot.wireframe,
+      })
+      return id
+    }
+
+    const nodes: SceneNodeRecord[] = []
+    const walk = (node: EditorNode, parentFileId: string | null): void => {
+      const id = parentFileId === null ? 'root' : `n${nodes.length}`
+      nodes.push({
+        id,
+        name: node.name,
+        kind: node.kind,
+        parentId: parentFileId,
+        position: [node.object.position.x, node.object.position.y, node.object.position.z],
+        rotation: [
+          THREE.MathUtils.radToDeg(node.object.rotation.x),
+          THREE.MathUtils.radToDeg(node.object.rotation.y),
+          THREE.MathUtils.radToDeg(node.object.rotation.z),
+        ],
+        scale: [node.object.scale.x, node.object.scale.y, node.object.scale.z],
+        visible: node.object.visible,
+        castShadow: booleanFlag(node.object, 'castShadow'),
+        receiveShadow: node.object instanceof THREE.Mesh ? node.object.receiveShadow : false,
+        geometryId: geometryIdFor(node),
+        materialId: materialIdFor(node),
+        light: lightDefaultsFrom(node.object),
+        components: this.componentRecords(node),
+      })
+      for (const childId of node.childIds) {
+        const child = this.nodes.get(childId)
+        if (child) walk(child, id)
+      }
+    }
+
+    const root = this.nodes.get(this.rootId)
+    if (!root) throw new Error('Scene root is missing.')
+    walk(root, null)
+    return {
+      version: 1,
+      path: this.scenePath,
+      scene: this.sceneSettings(),
+      grid: this.gridSettings(),
+      geometries,
+      materials,
+      nodes,
+    }
+  }
+
+  private applyScene(file: SceneFile): void {
+    const root = this.nodes.get(this.rootId)
+    if (!root) throw new Error('Scene root is missing.')
+    this.restoring = true
+    try {
+      this.controls?.detach()
+      if (this.playing) this.setPlaying(false)
+      for (const childId of [...root.childIds]) this.deleteNode(childId, true)
+      for (const instanceId of [...root.componentIds]) {
+        const instance = this.componentInstances.get(instanceId)
+        if (instance) destroy(instance.behaviour)
+        this.componentInstances.delete(instanceId)
+      }
+      root.componentIds = []
+
+      this.setBackground(file.scene.background)
+      this.setBackgroundIntensity(file.scene.backgroundIntensity)
+      this.setEnvironmentIntensity(file.scene.environmentIntensity)
+      this.setShadows(file.scene.shadows)
+      this.setShadowType(file.scene.shadowType)
+      this.setGridVisible(file.grid.visible)
+      this.setGridSize(file.grid.size)
+      this.setGridDivisions(file.grid.divisions)
+      this.setGridCenter(file.grid.center)
+      this.setGridColor(file.grid.color)
+      this.gridPosition.set(file.grid.position.x, file.grid.position.y, file.grid.position.z)
+      this.applyGridPosition()
+
+      const geoMap = new Map<string, string>()
+      for (const record of file.geometries) {
+        const resource = this.createGeometryResource(record.type, record.params, record.name)
+        geoMap.set(record.id, resource.id)
+      }
+      const matMap = new Map<string, string>()
+      for (const record of file.materials) {
+        const resource = this.createMaterialResource(record.name, record.source, {
+          side: record.side,
+          transparent: record.transparent,
+          wireframe: record.wireframe,
+        })
+        const compiled = this.compileMaterial(resource.id)
+        if (!compiled.ok) this.log(`${record.name}: ${compiled.error}`, 'error')
+        matMap.set(record.id, resource.id)
+      }
+
+      const runtime = new Map<string, string>()
+      const rootRecord = file.nodes.find((node) => node.parentId === null)
+      if (rootRecord) {
+        runtime.set(rootRecord.id, this.rootId)
+        root.object.visible = rootRecord.visible
+        this.applyComponents(root, rootRecord.components)
+      }
+      for (const record of file.nodes) {
+        if (!record.parentId) continue
+        const parentRuntime = runtime.get(record.parentId)
+        if (!parentRuntime) {
+          this.log(`Skipped ${record.name}: its parent is missing from the scene file.`, 'warn')
+          continue
+        }
+        const created = this.spawnRecord(record, parentRuntime, geoMap, matMap)
+        runtime.set(record.id, created.id)
+      }
+      this.select(this.rootId)
+      this.sceneDirty = false
+    } finally {
+      this.restoring = false
+    }
+  }
+
+  private spawnRecord(
+    record: SceneNodeRecord,
+    parentId: string,
+    geoMap: Map<string, string>,
+    matMap: Map<string, string>,
+  ): EditorNode {
+    const parent = this.nodes.get(parentId)
+    if (!parent) throw new Error('Parent is missing.')
+
+    let geometryId: string | null = null
+    let materialId: string | null = null
+    let object: THREE.Object3D
+
+    if (record.kind === 'MeshInstance3D') {
+      geometryId = record.geometryId ? geoMap.get(record.geometryId) ?? null : null
+      materialId = record.materialId ? matMap.get(record.materialId) ?? null : null
+      if (!geometryId || !this.geometries.get(geometryId)?.geometry) {
+        geometryId = this.createGeometryResource('box', defaultParams('box')).id
+      }
+      if (!materialId || !this.materials.get(materialId)?.material) {
+        const resource = this.createMaterialResource('Lit', presetById('lit').source, { ...DEFAULT_FLAGS })
+        this.compileMaterial(resource.id)
+        materialId = resource.id
+      }
+      const geometry = this.geometries.get(geometryId)?.geometry
+      const material = this.materials.get(materialId)?.material
+      if (!geometry || !material) throw new Error(`Could not build ${record.name}.`)
+      const mesh = new THREE.Mesh(geometry, material)
+      mesh.castShadow = record.castShadow
+      mesh.receiveShadow = record.receiveShadow
+      object = mesh
+    } else if (record.kind === 'DirectionalLight3D') {
+      object = new THREE.DirectionalLight(record.light?.color ?? '#ffffff', record.light?.intensity ?? 1)
+    } else if (record.kind === 'OmniLight3D') {
+      object = new THREE.PointLight(record.light?.color ?? '#ffffff', record.light?.intensity ?? 1, record.light?.range ?? 12, 0)
+    } else if (record.kind === 'SpotLight3D') {
+      object = new THREE.SpotLight(
+        record.light?.color ?? '#ffffff',
+        record.light?.intensity ?? 1,
+        record.light?.range ?? 16,
+        THREE.MathUtils.degToRad(record.light?.angle ?? 35),
+        record.light?.penumbra ?? 0.4,
+        0,
+      )
+    } else if (record.kind === 'HemisphereLight3D') {
+      object = new THREE.HemisphereLight(
+        record.light?.color ?? '#e7eefc',
+        record.light?.ground ?? '#3c342c',
+        record.light?.intensity ?? 0.45,
+      )
+    } else {
+      object = new THREE.Group()
+    }
+
+    object.name = this.uniqueName(record.name.trim() || NODE_LABEL[record.kind])
+    object.position.set(record.position[0], record.position[1], record.position[2])
+    object.rotation.set(
+      THREE.MathUtils.degToRad(record.rotation[0]),
+      THREE.MathUtils.degToRad(record.rotation[1]),
+      THREE.MathUtils.degToRad(record.rotation[2]),
+    )
+    const scale = record.scale.map((value) => (value === 0 ? 0.001 : value)) as [number, number, number]
+    object.scale.set(scale[0], scale[1], scale[2])
+    object.visible = record.visible
+
+    if (object instanceof THREE.Light) {
+      const look = record.light?.lookAt
+      const aimable = record.kind === 'DirectionalLight3D' || record.kind === 'SpotLight3D'
+      const aim = look?.enabled ? new THREE.Vector3(look.x, look.y, look.z) : null
+      this.prepareLight(object, aimable ? aim : null)
+      if (aimable) {
+        object.userData.lookAt = look
+          ? { enabled: look.enabled, x: look.x, y: look.y, z: look.z }
+          : { enabled: false, x: 0, y: 0, z: 0 }
+        if (!look?.enabled) {
+          object.rotation.set(
+            THREE.MathUtils.degToRad(record.rotation[0]),
+            THREE.MathUtils.degToRad(record.rotation[1]),
+            THREE.MathUtils.degToRad(record.rotation[2]),
+          )
+        }
+      }
+      if (record.light) {
+        object.color.set(record.light.color)
+        object.intensity = record.light.intensity
+        if (object instanceof THREE.HemisphereLight && record.light.ground) object.groundColor.set(record.light.ground)
+      }
+      if ('castShadow' in object) object.castShadow = record.castShadow
+    } else if ('castShadow' in object) {
+      object.castShadow = record.castShadow
+    }
+
+    parent.object.add(object)
+    const node = this.addNode(object, parent.id, record.kind, false)
+    node.geometryId = geometryId
+    node.materialId = materialId
+    if (record.kind === 'DirectionalLight3D' || record.kind === 'SpotLight3D') this.aimLight(object)
+    this.applyComponents(node, record.components)
+    this.captureDefaults(node)
+    return node
+  }
+
+  private applyComponents(node: EditorNode, components: SceneComponentRecord[]): void {
+    for (const component of components) {
+      const resource = this.componentByName(component.name)
+      if (!resource) {
+        this.log(`${node.name} is missing the ${component.name} component.`, 'warn')
+        continue
+      }
+      const instance = this.attachComponent(resource.id, node.id, component.parameters, true)
+      if (instance && !component.enabled) this.setComponentEnabled(instance.id, false)
+    }
+  }
+
+  private componentRecords(node: EditorNode): SceneComponentRecord[] {
+    const records: SceneComponentRecord[] = []
+    for (const instanceId of node.componentIds) {
+      const instance = this.componentInstances.get(instanceId)
+      const resource = instance ? this.components.get(instance.resourceId) : undefined
+      if (!instance || !resource) continue
+      records.push({
+        name: resource.name,
+        enabled: instance.behaviour.enabled,
+        parameters: parameterFields(instance.behaviour),
+      })
+    }
+    return records
+  }
+
+  private componentByName(name: string): ComponentResource | undefined {
+    for (const resource of this.components.values()) {
+      if (resource.name === name) return resource
+    }
+    return undefined
   }
 
   private onFrame(): void {
@@ -1596,6 +2070,7 @@ export class EditorState {
     this.nodes.get(parentId)?.childIds.push(id)
     this.attachIcon(node)
     this.captureDefaults(node)
+    this.touchScene()
     return node
   }
 
@@ -1761,6 +2236,44 @@ export class EditorState {
     while (names.has(`${base}${index}`)) index += 1
     return `${base}${index}`
   }
+}
+
+function geometrySnapshot(geometry: THREE.BufferGeometry): { type: GeometryType, params: Record<string, number> } | null {
+  const entry = GEOMETRY_CATALOG.find((item) => item.label === geometry.type)
+  if (!entry) return null
+  const parameters = (geometry as THREE.BufferGeometry & { parameters?: Record<string, unknown> }).parameters
+  if (!parameters) return null
+  const params = defaultParams(entry.type)
+  for (const spec of entry.params) {
+    const value = parameters[spec.key]
+    if (typeof value === 'number' && Number.isFinite(value)) params[spec.key] = value
+  }
+  return { type: entry.type, params }
+}
+
+function materialSnapshot(material: THREE.Material): { source: string, side: MaterialSide, transparent: boolean, wireframe: boolean } | null {
+  const stored = material.userData.tslSource
+  const source = typeof stored === 'string' && stored.trim()
+    ? stored
+    : material instanceof THREE.MeshStandardNodeMaterial
+      ? `material.colorNode = color('#${material.color.getHexString()}')
+material.roughnessNode = float(${material.roughness})
+material.metalnessNode = float(${material.metalness})
+`
+      : null
+  if (!source) return null
+  const side: MaterialSide = material.side === THREE.BackSide
+    ? 'back'
+    : material.side === THREE.DoubleSide
+      ? 'double'
+      : 'front'
+  const wireframe = 'wireframe' in material && Boolean((material as { wireframe?: boolean }).wireframe)
+  return { source, side, transparent: material.transparent, wireframe }
+}
+
+function booleanFlag(object: THREE.Object3D, key: 'castShadow' | 'receiveShadow'): boolean {
+  const value = (object as unknown as Record<string, unknown>)[key]
+  return typeof value === 'boolean' ? value : false
 }
 
 function copyLookAt(value: LookAtConfig | undefined): LookAtConfig | null {

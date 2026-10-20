@@ -94,8 +94,8 @@ onBeforeUnmount(() => {
       />
       <div class="center">
         <div class="scene-tabs">
-          <button type="button" class="scene-tab active">
-            <Icon name="scene" /> World.tscn
+          <button type="button" class="scene-tab active" :title="store.scenePath">
+            <Icon name="scene" /> {{ store.sceneLabel }}
           </button>
           <span class="spacer" />
           <button type="button" class="icon-btn distraction" title="Distraction Free Mode" @click="store.distraction = !store.distraction">
