@@ -11,6 +11,7 @@ import Icon from '../components/Icon.vue'
 import InspectorDock from '../components/InspectorDock.vue'
 import PopupMenu from '../components/PopupMenu.vue'
 import SceneDock from '../components/SceneDock.vue'
+import SceneFileDialog from '../components/SceneFileDialog.vue'
 import ScriptScreen from '../components/ScriptScreen.vue'
 import TopBar from '../components/TopBar.vue'
 import Viewport from '../components/Viewport.vue'
@@ -94,8 +95,8 @@ onBeforeUnmount(() => {
       />
       <div class="center">
         <div class="scene-tabs">
-          <button type="button" class="scene-tab active">
-            <Icon name="scene" /> World.tscn
+          <button type="button" class="scene-tab active" :title="store.scenePath">
+            <Icon name="scene" /> {{ store.sceneLabel }}
           </button>
           <span class="spacer" />
           <button type="button" class="icon-btn distraction" title="Distraction Free Mode" @click="store.distraction = !store.distraction">
@@ -132,6 +133,7 @@ onBeforeUnmount(() => {
       :align-start="store.popup.alignStart"
       :items="store.popup.items"
     />
+    <SceneFileDialog />
     <CreateNodeDialog v-if="store.createOpen" :key="store.createNonce" />
     <CreateComponentDialog v-if="store.componentOpen" :key="store.componentNonce" />
     <ComponentWarning />

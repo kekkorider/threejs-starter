@@ -9,7 +9,11 @@ const store = useEditorStore()
 const shortcuts = `Ctrl+A   Create node
 Ctrl+C   Create component
 Ctrl+D   Duplicate
-Ctrl+S   Apply TSL
+Ctrl+S        Apply TSL
+Ctrl+Shift+S  Save scene
+Ctrl+Alt+S    Save scene as
+Ctrl+Shift+L  Load scene
+Ctrl+Shift+A  Instance scene
 F2       Rename
 Del      Delete
 F        Focus selection
@@ -20,6 +24,7 @@ F8       Stop
 Esc      Stop play, or close a dialog
 
 Drag a scene-tree row onto another node to reparent it.
+Drag a saved scene from the File system onto a node to instance it.
 Drag a component onto an object to add it. Double-click a component to edit it in the Script tab.
 Drag the colored x / y / z labels to scrub a value.`
 

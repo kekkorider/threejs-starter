@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import { COMPONENT_DRAG_PREFIX, INSTANCE_DRAG_PREFIX } from '../behaviors'
+import { isSceneDrag, sceneDragPath } from '../sceneFile'
 import { kindClass, kindIcon } from '../lib/format'
 import { useEditorStore } from '../stores/editor'
 import Icon from './Icon.vue'
@@ -43,8 +44,27 @@ function onInstanceDrag(event: DragEvent, instanceId: string): void {
   if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move'
 }
 
+function allowDrop(event: DragEvent): void {
+  const transfer = event.dataTransfer
+  if (!transfer) return
+  transfer.dropEffect = isSceneDrag(transfer) || transfer.effectAllowed === 'copy' ? 'copy' : 'move'
+  drop.value = true
+}
+
+function clearDrop(event: DragEvent): void {
+  const next = event.relatedTarget
+  const current = event.currentTarget
+  if (next instanceof Node && current instanceof Node && current.contains(next)) return
+  drop.value = false
+}
+
 function acceptDrop(event: DragEvent): void {
   drop.value = false
+  const scenePath = sceneDragPath(event.dataTransfer)
+  if (scenePath) {
+    store.instanceScene(scenePath, props.id)
+    return
+  }
   const data = event.dataTransfer?.getData('text/plain') ?? ''
   if (!data) return
   if (data.startsWith(COMPONENT_DRAG_PREFIX)) {
@@ -81,12 +101,14 @@ function componentVisible(componentId: string): boolean {
       :class="{ selected: store.selectedId === node.id && !node.componentIds.includes(store.selectedComponentId ?? ''), 'drop-target': drop }"
       :style="{ paddingLeft: `${6 + depth * 14}px` }"
       :draggable="!node.isRoot"
+      :title="node.instancePath ? `Instance of ${node.instancePath}` : undefined"
       @click="store.select(node.id)"
       @dblclick.stop="store.beginRename(node.id)"
       @contextmenu.prevent="store.openContextMenu(node.id, $event.clientX, $event.clientY)"
       @dragstart="onDragStart"
-      @dragover.stop.prevent="drop = true"
-      @dragleave="drop = false"
+      @dragenter.stop.prevent="allowDrop"
+      @dragover.stop.prevent="allowDrop"
+      @dragleave="clearDrop"
       @drop.stop.prevent="acceptDrop"
     >
       <button
@@ -97,8 +119,8 @@ function componentVisible(componentId: string): boolean {
       >
         <Icon name="chevron-down" />
       </button>
-      <span class="kind-icon" :class="kindClass(node.kind)">
-        <Icon :name="kindIcon(node.kind)" />
+      <span class="kind-icon" :class="node.instancePath ? 'scene' : kindClass(node.kind)">
+        <Icon :name="node.instancePath ? 'scene' : kindIcon(node.kind)" />
       </span>
       <input
         v-if="renaming"
@@ -125,8 +147,9 @@ function componentVisible(componentId: string): boolean {
         @dblclick.stop="store.editComponent(componentId)"
         @contextmenu.prevent.stop="store.openComponentMenu(componentId, $event.clientX, $event.clientY)"
         @dragstart="onInstanceDrag($event, componentId)"
-        @dragover.stop.prevent="drop = true"
-        @dragleave="drop = false"
+        @dragenter.stop.prevent="allowDrop"
+        @dragover.stop.prevent="allowDrop"
+        @dragleave="clearDrop"
         @drop.stop.prevent="acceptDrop"
       >
         <button type="button" class="twist empty"><Icon name="chevron-down" /></button>

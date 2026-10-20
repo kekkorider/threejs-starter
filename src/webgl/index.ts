@@ -27,6 +27,10 @@ import { ScaleMaterial } from './materials/scale'
 import { Spin } from './behaviors/Spin'
 import { DEFAULT_FLAGS, compileTSLMaterial, presetById } from '../editor/tsl'
 
+// The cube keeps this shared material. Save reads the source so a loaded scene can rebuild it.
+ScaleMaterial.userData.tslSource = presetById('uv').source
+if (!ScaleMaterial.name) ScaleMaterial.name = 'Scale'
+
 //
 // Setup
 //
@@ -98,6 +102,7 @@ modules.assetLoader.createKTX2Loader()
 //
 const floorMaterial = compileTSLMaterial(presetById('uv').source, { ...DEFAULT_FLAGS })
 floorMaterial.name = 'UV'
+floorMaterial.userData.tslSource = presetById('uv').source
 const floor = new THREE.Mesh(new THREE.BoxGeometry(10, 0.5, 10), floorMaterial)
 floor.name = 'Floor'
 floor.position.set(0, 0, 0)

@@ -41,12 +41,16 @@ function onName(event: Event): void {
       </template>
       <template v-else-if="node">
         <div class="node-head">
-          <span class="kind-icon" :class="kindClass(node.kind)">
-            <Icon :name="kindIcon(node.kind)" />
+          <span class="kind-icon" :class="node.instancePath ? 'scene' : kindClass(node.kind)">
+            <Icon :name="node.instancePath ? 'scene' : kindIcon(node.kind)" />
           </span>
           <input :value="node.name" :disabled="node.isRoot" @change="onName" />
         </div>
         <div class="inherits">{{ node.inherits }}</div>
+        <div v-if="node.instancePath" class="instance-note">
+          <span>Instance of {{ node.instancePath }}</span>
+          <button type="button" class="btn" @click="store.makeLocal(node.id)">Make Local</button>
+        </div>
         <SceneSection />
         <GridSection />
         <TransformSection />

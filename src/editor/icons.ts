@@ -1,7 +1,7 @@
 /** 16px icons in the flat style of the Godot 4 editor. */
 export function icon(name: string): string {
   const body = PATHS[name] ?? PATHS.node
-  return `<svg class="ico" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">${body}</svg>`
+  return `<svg class="ico" draggable="false" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">${body}</svg>`
 }
 
 const PATHS: Record<string, string> = {
