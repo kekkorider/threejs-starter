@@ -48,6 +48,32 @@ export interface SceneNodeRecord {
 
 export const SCENE_DRAG_PREFIX = 'scene:'
 
+/** MIME type so a drop target can tell a scene drag from a node drag before drop. */
+export const SCENE_DRAG_TYPE = 'text/x-scene-path'
+
+export function writeSceneDrag(transfer: DataTransfer, path: string): void {
+  transfer.effectAllowed = 'copy'
+  transfer.setData('text/plain', `${SCENE_DRAG_PREFIX}${path}`)
+  try {
+    transfer.setData(SCENE_DRAG_TYPE, path)
+  } catch {
+    // text/plain still carries the path when a custom type is refused.
+  }
+}
+
+/** True during dragover, when the path itself is still hidden. */
+export function isSceneDrag(transfer: DataTransfer | null): boolean {
+  return !!transfer && [...transfer.types].includes(SCENE_DRAG_TYPE)
+}
+
+export function sceneDragPath(transfer: DataTransfer | null): string | null {
+  if (!transfer) return null
+  const plain = transfer.getData('text/plain')
+  if (plain.startsWith(SCENE_DRAG_PREFIX)) return plain.slice(SCENE_DRAG_PREFIX.length)
+  const typed = transfer.getData(SCENE_DRAG_TYPE)
+  return typed || null
+}
+
 /** Packed scene: the node tree plus the geometry, materials, and light settings it uses. */
 export interface SceneFile {
   version: 1

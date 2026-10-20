@@ -48,10 +48,11 @@ function onKey(event: KeyboardEvent): void {
         <p v-if="store.instanceChoices.length === 0">Save another scene, then instance it here.</p>
         <div v-else class="scene-choices">
           <button
-            v-for="file in store.instanceChoices"
+            v-for="(file, index) in store.instanceChoices"
             :key="file.path"
             type="button"
             class="file-row"
+            :autofocus="index === 0"
             @click="store.instanceScene(file.path)"
           >
             <span class="kind-icon scene"><Icon name="scene" /></span>

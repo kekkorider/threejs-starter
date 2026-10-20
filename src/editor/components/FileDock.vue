@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { COMPONENT_DRAG_PREFIX } from '../behaviors'
-import { SCENE_DRAG_PREFIX } from '../sceneFile'
+import { writeSceneDrag } from '../sceneFile'
 import Icon from './Icon.vue'
 import { useEditorStore } from '../stores/editor'
 
@@ -38,9 +38,9 @@ function onSceneClick(path: string): void {
 }
 
 function onSceneDrag(event: DragEvent, path: string): void {
+  if (!event.dataTransfer) return
   suppressClick = true
-  event.dataTransfer?.setData('text/plain', `${SCENE_DRAG_PREFIX}${path}`)
-  if (event.dataTransfer) event.dataTransfer.effectAllowed = 'copy'
+  writeSceneDrag(event.dataTransfer, path)
 }
 
 function onComponentDrag(event: DragEvent, id: string): void {
@@ -69,10 +69,11 @@ function onComponentClick(id: string): void {
         :key="file.path"
         class="file-row"
         :class="{ selected: file.open && store.selectedId === store.rootId }"
+        :data-scene-path="file.path"
         :title="file.saved && !file.open ? 'Drag onto the scene tree to instance' : (file.open ? 'Open scene' : 'Open this scene')"
-        :draggable="file.saved && !file.open"
+        :draggable="file.saved && !file.open ? 'true' : 'false'"
         @click="onSceneClick(file.path)"
-        @dragstart="onSceneDrag($event, file.path)"
+        @dragstart.stop="onSceneDrag($event, file.path)"
       >
         <span class="kind-icon scene"><Icon name="scene" /></span>
         <span class="label">{{ file.path }}{{ file.open && store.sceneDirty ? ' (*)' : '' }}</span>
@@ -81,6 +82,7 @@ function onComponentClick(id: string): void {
           type="button"
           class="icon-btn danger row-delete"
           title="Delete"
+          @mousedown.stop
           @click.stop="store.deleteSceneFile(file.path)"
         >
           <Icon name="delete" />
