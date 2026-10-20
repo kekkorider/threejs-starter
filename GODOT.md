@@ -50,7 +50,8 @@ When a feature lands, move it from **Not yet** into **Already in place**. Do not
 
 ### Scene file
 
-- Save Scene and Load Scene write the node tree, transforms, geometry, materials, light settings, component parameters, and the World background, shadows, and grid. The open scene is `res://World.tscn`. Ctrl+Shift+S saves it, and Ctrl+Shift+L loads it. The scene tab shows `(*)` until that save.
+- Save Scene and Load Scene write the node tree, transforms, geometry, materials, light settings, component parameters, and the World background, shadows, and grid. Ctrl+Shift+S saves the open scene, and Ctrl+Shift+L loads it. The scene tab shows `(*)` until that save.
+- The File system lists saved scenes. The open scene uses that path (`res://World.tscn` until Save Scene As), and the scene tab shows the same file. Ctrl+Alt+S saves to another `res://` path. Click a scene file to open it. An unsaved scene asks before it is replaced.
 
 ### Resources
 
@@ -82,7 +83,6 @@ Build these in an order that keeps the editor usable. A half-wired Godot feature
 
 ### Scene file
 
-- A scene path that matches the File system (`res://World.tscn` is only a label today).
 - Instancing one scene inside another.
 
 ### History

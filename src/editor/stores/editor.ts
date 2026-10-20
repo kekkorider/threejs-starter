@@ -7,7 +7,7 @@ import { GEOMETRY_CATALOG, triangleCount, type GeometryType } from '../geometry'
 import type { NodeKind, ToolMode } from '../state'
 import { EditorState, NODE_TYPES, type EditorNode, type GridSettings, type LogLine, type SceneSettings, type ShadowTypeName } from '../state'
 import type { ComponentParameter } from '../behaviors'
-import { sceneFileName } from '../sceneFile'
+import { hasSceneFile, normalizeScenePath, readSceneLibrary, sceneFileName } from '../sceneFile'
 import { DEFAULT_FLAGS, TSL_PRESETS, matchingPresetId, type MaterialSide } from '../tsl'
 import { setViewportShading } from '../../webgl'
 
@@ -179,6 +179,10 @@ export const useEditorStore = defineStore('editor', () => {
   const scenePath = ref(engine.scenePath)
   const sceneDirty = ref(true)
   const sceneSaved = ref(false)
+  const sceneDialog = ref<'' | 'save-as' | 'unsaved'>('')
+  const sceneDialogPath = ref('res://NewScene.tscn')
+  const sceneDialogError = ref('')
+  const pendingScenePath = ref('')
   const metaName = ref('')
   const metaTris = ref(0)
   let compileTimer = 0
@@ -269,6 +273,25 @@ export const useEditorStore = defineStore('editor', () => {
   const sceneLabel = computed(() => {
     const name = sceneFileName(scenePath.value)
     return sceneDirty.value ? `${name} (*)` : name
+  })
+
+  const sceneFiles = computed(() => {
+    void revision.value
+    const saved = new Set(readSceneLibrary().map((file) => file.path))
+    const paths = new Set(saved)
+    paths.add(scenePath.value)
+    return [...paths]
+      .sort((a, b) => a.localeCompare(b))
+      .map((path) => ({
+        path,
+        open: path === scenePath.value,
+        saved: saved.has(path),
+      }))
+  })
+
+  const sceneSaveAsReplaces = computed(() => {
+    const path = normalizeScenePath(sceneDialogPath.value)
+    return Boolean(path && path !== scenePath.value && hasSceneFile(path))
   })
 
   const selected = computed(() => {
@@ -891,6 +914,93 @@ export const useEditorStore = defineStore('editor', () => {
     if (!loaded) bottomTab.value = 'output'
   }
 
+  function finishOpenScene(path: string): void {
+    const opened = engine.openScene(path)
+    if (opened) {
+      rememberExpanded()
+      selectedComponentId.value = null
+    }
+    touch(true)
+    if (!opened) bottomTab.value = 'output'
+  }
+
+  function openSceneFile(path: string): void {
+    if (path === engine.scenePath) {
+      select(engine.rootId)
+      return
+    }
+    if (engine.playing) {
+      engine.log('Stop the scene before opening another one.', 'warn')
+      touch()
+      bottomTab.value = 'output'
+      return
+    }
+    if (engine.sceneDirty) {
+      pendingScenePath.value = path
+      sceneDialogError.value = ''
+      sceneDialog.value = 'unsaved'
+      return
+    }
+    finishOpenScene(path)
+  }
+
+  function openSaveAs(): void {
+    if (!ready.value) return
+    closePopups()
+    helpTopic.value = ''
+    createOpen.value = false
+    componentOpen.value = false
+    const current = engine.scenePath
+    const name = sceneFileName(current).replace(/\.tscn$/, '') || 'Scene'
+    const folder = current.slice(0, current.length - sceneFileName(current).length)
+    sceneDialogPath.value = `${folder}${name}2.tscn`
+    sceneDialogError.value = ''
+    sceneDialog.value = 'save-as'
+  }
+
+  function confirmSaveAs(): void {
+    const saved = engine.saveSceneAs(sceneDialogPath.value)
+    if (!saved) {
+      sceneDialogError.value = engine.logs.at(-1)?.message ?? 'Could not save the scene.'
+      touch()
+      bottomTab.value = 'output'
+      return
+    }
+    sceneDialog.value = ''
+    sceneDialogError.value = ''
+    touch(true)
+  }
+
+  function confirmSaveAndOpen(): void {
+    const pending = pendingScenePath.value
+    const saved = engine.saveOpenScene()
+    if (!saved) {
+      sceneDialog.value = ''
+      touch()
+      bottomTab.value = 'output'
+      return
+    }
+    sceneDialog.value = ''
+    finishOpenScene(pending)
+  }
+
+  function discardAndOpen(): void {
+    const pending = pendingScenePath.value
+    sceneDialog.value = ''
+    finishOpenScene(pending)
+  }
+
+  function cancelSceneDialog(): void {
+    sceneDialog.value = ''
+    sceneDialogError.value = ''
+  }
+
+  function deleteSceneFile(path: string): void {
+    const removed = engine.deleteScene(path)
+    touch()
+    if (!removed) bottomTab.value = 'output'
+  }
+
   function openCreate(kind: NodeKind = 'MeshInstance3D', presetId?: string): void {
     if (!ready.value) return
     closePopups()
@@ -1216,6 +1326,7 @@ export const useEditorStore = defineStore('editor', () => {
     if (name === 'Scene') {
       return [
         { label: 'Save Scene', shortcut: 'Ctrl+Shift+S', action: () => saveOpenScene() },
+        { label: 'Save Scene As…', shortcut: 'Ctrl+Alt+S', action: () => openSaveAs() },
         { label: 'Load Scene', shortcut: 'Ctrl+Shift+L', disabled: !engine.hasSavedScene(), action: () => loadOpenScene() },
         { separator: true, label: '', action: () => {} },
         { label: 'Create Node…', shortcut: 'Ctrl+A', action: () => openCreate() },
@@ -1343,6 +1454,11 @@ export const useEditorStore = defineStore('editor', () => {
   function onKeyDown(event: KeyboardEvent): void {
     const target = event.target as HTMLElement | null
     const typing = !!target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
+    if ((event.ctrlKey || event.metaKey) && event.altKey && event.key.toLowerCase() === 's') {
+      event.preventDefault()
+      if (sceneDialog.value !== 'save-as') openSaveAs()
+      return
+    }
     if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 's') {
       event.preventDefault()
       saveOpenScene()
@@ -1359,6 +1475,10 @@ export const useEditorStore = defineStore('editor', () => {
       return
     }
     if (event.key === 'Escape' && !typing) {
+      if (sceneDialog.value) {
+        sceneDialog.value = ''
+        return
+      }
       if (componentWarning.value) {
         componentWarning.value = null
         return
@@ -1376,7 +1496,7 @@ export const useEditorStore = defineStore('editor', () => {
         return
       }
     }
-    if (typing || createOpen.value || componentOpen.value || helpTopic.value) return
+    if (typing || createOpen.value || componentOpen.value || helpTopic.value || sceneDialog.value) return
     const key = event.key.toLowerCase()
     if ((event.ctrlKey || event.metaKey) && key === 'a') {
       event.preventDefault()
@@ -1470,6 +1590,11 @@ export const useEditorStore = defineStore('editor', () => {
     sceneDirty,
     sceneSaved,
     sceneLabel,
+    sceneFiles,
+    sceneDialog,
+    sceneDialogPath,
+    sceneDialogError,
+    sceneSaveAsReplaces,
     metaName,
     metaTris,
     nodes,
@@ -1555,6 +1680,13 @@ export const useEditorStore = defineStore('editor', () => {
     compileBound,
     saveOpenScene,
     loadOpenScene,
+    openSceneFile,
+    openSaveAs,
+    confirmSaveAs,
+    confirmSaveAndOpen,
+    discardAndOpen,
+    cancelSceneDialog,
+    deleteSceneFile,
     openCreate,
     createFromDraft,
     openComponentDialog,

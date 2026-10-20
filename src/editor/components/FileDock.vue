@@ -8,8 +8,9 @@ const store = useEditorStore()
 let suppressClick = false
 const query = computed(() => store.fileFilter.trim().toLowerCase())
 
-const scenePath = 'res://World.tscn'
-const showScene = computed(() => !query.value || scenePath.toLowerCase().includes(query.value))
+const scenes = computed(() => store.sceneFiles.filter((file) => {
+  return !query.value || file.path.toLowerCase().includes(query.value)
+}))
 
 const meshes = computed(() => store.geometryFiles.filter((file) => {
   const path = `res://meshes/${file.name}.tres`
@@ -25,7 +26,7 @@ const components = computed(() => store.componentFiles.filter((file) => {
   return !query.value || file.path.toLowerCase().includes(query.value) || file.name.toLowerCase().includes(query.value)
 }))
 
-const empty = computed(() => !showScene.value && meshes.value.length === 0 && materials.value.length === 0 && components.value.length === 0)
+const empty = computed(() => scenes.value.length === 0 && meshes.value.length === 0 && materials.value.length === 0 && components.value.length === 0)
 
 function onComponentDrag(event: DragEvent, id: string): void {
   suppressClick = true
@@ -49,13 +50,24 @@ function onComponentClick(id: string): void {
     <div class="tree files">
       <div v-if="empty" class="empty-note">No resources yet. Create a MeshInstance.</div>
       <div
-        v-if="showScene"
+        v-for="file in scenes"
+        :key="file.path"
         class="file-row"
-        :class="{ selected: store.selectedId === store.rootId }"
-        @click="store.select(store.rootId)"
+        :class="{ selected: file.open && store.selectedId === store.rootId }"
+        :title="file.open ? 'Open scene' : 'Open this scene'"
+        @click="store.openSceneFile(file.path)"
       >
         <span class="kind-icon scene"><Icon name="scene" /></span>
-        <span class="label">{{ scenePath }}</span>
+        <span class="label">{{ file.path }}{{ file.open && store.sceneDirty ? ' (*)' : '' }}</span>
+        <button
+          v-if="file.saved && !file.open"
+          type="button"
+          class="icon-btn danger row-delete"
+          title="Delete"
+          @click.stop="store.deleteSceneFile(file.path)"
+        >
+          <Icon name="delete" />
+        </button>
       </div>
       <div v-if="meshes.length" class="group-label">res://meshes</div>
       <div

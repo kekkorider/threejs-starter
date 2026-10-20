@@ -2,7 +2,7 @@ import { GEOMETRY_CATALOG, type GeometryType } from './geometry'
 import type { GridSettings, LightDefaults, NodeKind, SceneSettings, ShadowTypeName } from './state'
 import type { MaterialSide } from './tsl'
 
-/** The scene that opens with the editor. Feature 2 can point this at another file. */
+/** Scene that opens when the project has no saved scene yet. */
 export const OPEN_SCENE_PATH = 'res://World.tscn'
 
 export interface SceneComponentRecord {
@@ -73,6 +73,42 @@ const SHADOW_TYPES = new Set<ShadowTypeName>(['basic', 'pcf', 'vsm'])
 export function sceneFileName(path: string): string {
   const slash = path.lastIndexOf('/')
   return slash === -1 ? path : path.slice(slash + 1)
+}
+
+/** Accept `Name`, `Name.tscn`, or `res://folder/Name.tscn`. */
+export function normalizeScenePath(input: string): string | null {
+  let path = input.trim().replace(/\\/g, '/')
+  if (!path) return null
+  if (!path.startsWith('res://')) path = `res://${path.replace(/^\/+/, '')}`
+  if (!path.endsWith('.tscn')) path += '.tscn'
+  if (path.includes('..')) return null
+  if (!/^res:\/\/(?:[A-Za-z0-9_-]+\/)*[A-Za-z0-9_-]+\.tscn$/.test(path)) return null
+  return path
+}
+
+export function readOpenPath(): string {
+  return readBlob()?.openPath || OPEN_SCENE_PATH
+}
+
+/** Open the last saved scene, or the starter path when nothing has been saved. */
+export function preferredOpenPath(): string {
+  const open = readOpenPath()
+  if (open && hasSceneFile(open)) return open
+  return OPEN_SCENE_PATH
+}
+
+export function rememberOpenPath(path: string): void {
+  const current = readBlob()
+  writeBlob({ openPath: path, files: current?.files ?? [] })
+}
+
+export function removeSceneFile(path: string): void {
+  const current = readBlob()
+  if (!current) return
+  writeBlob({
+    openPath: current.openPath === path ? OPEN_SCENE_PATH : current.openPath,
+    files: current.files.filter((file) => file.path !== path),
+  })
 }
 
 export function readSceneLibrary(): SceneFile[] {

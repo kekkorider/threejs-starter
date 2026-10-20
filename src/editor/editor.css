@@ -229,6 +229,7 @@
 .tree-row .kind-icon.mesh, .file-row .mesh { color: var(--mesh); }
 .tree-row .kind-icon.light, .file-row .light { color: var(--light); }
 .tree-row .kind-icon.component, .file-row .component, .node-head .kind-icon.component { color: #7ec8e3; }
+.tree-row .kind-icon.scene, .file-row .scene { color: #7aa2ff; }
 .tree-row .kind-icon .ico, .file-row .ico { width: 14px; height: 14px; display: block; }
 .rename-input {
   height: 18px;
@@ -743,6 +744,19 @@
 .warning-body p { margin: 0 0 10px; color: var(--font-dim); }
 .warning-body ul { margin: 0 0 8px; padding-left: 18px; max-height: 220px; overflow: auto; }
 .warning-body li { margin: 2px 0; }
+.warning-body .path, .path-input { font-family: ui-monospace, Consolas, monospace; }
+.path-input {
+  width: 100%;
+  height: 28px;
+  margin: 0 0 8px;
+  padding: 0 8px;
+  border-radius: 4px;
+  border: 1px solid #1a1a1a;
+  background: var(--inset);
+  color: var(--font);
+}
+.warning-body .hint { padding: 0 0 8px; }
+.warning-body .hint.error { color: #ffb4b4; }
 
 .placeholder { z-index: 2; }
 .viewport-wrap { z-index: 1; }

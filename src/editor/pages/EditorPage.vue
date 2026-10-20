@@ -11,6 +11,7 @@ import Icon from '../components/Icon.vue'
 import InspectorDock from '../components/InspectorDock.vue'
 import PopupMenu from '../components/PopupMenu.vue'
 import SceneDock from '../components/SceneDock.vue'
+import SceneFileDialog from '../components/SceneFileDialog.vue'
 import ScriptScreen from '../components/ScriptScreen.vue'
 import TopBar from '../components/TopBar.vue'
 import Viewport from '../components/Viewport.vue'
@@ -132,6 +133,7 @@ onBeforeUnmount(() => {
       :align-start="store.popup.alignStart"
       :items="store.popup.items"
     />
+    <SceneFileDialog />
     <CreateNodeDialog v-if="store.createOpen" :key="store.createNonce" />
     <CreateComponentDialog v-if="store.componentOpen" :key="store.componentNonce" />
     <ComponentWarning />

@@ -11,6 +11,7 @@ Ctrl+C   Create component
 Ctrl+D   Duplicate
 Ctrl+S        Apply TSL
 Ctrl+Shift+S  Save scene
+Ctrl+Alt+S    Save scene as
 Ctrl+Shift+L  Load scene
 F2       Rename
 Del      Delete

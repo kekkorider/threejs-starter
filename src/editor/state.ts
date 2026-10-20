@@ -25,9 +25,12 @@ import {
 } from './geometry'
 import { attachLightArrow, attachLightIcon, disposeLightArrow, disposeLightIcon, type LightIconKind } from './lightIcons'
 import {
-  OPEN_SCENE_PATH,
   hasSceneFile,
+  normalizeScenePath,
+  preferredOpenPath,
   readSceneFile,
+  rememberOpenPath,
+  removeSceneFile,
   writeSceneFile,
   type SceneComponentRecord,
   type SceneFile,
@@ -241,7 +244,7 @@ export class EditorState {
   /** Editor gizmos, grid, and selection are hidden on the plain scene route. */
   chromeVisible = false
   /** res:// path of the scene open in the editor. */
-  scenePath = OPEN_SCENE_PATH
+  scenePath = preferredOpenPath()
   /** True after an edit that Save Scene has not written yet. */
   sceneDirty = false
 
@@ -396,6 +399,59 @@ export class EditorState {
     }
     this.applyScene(file)
     this.log(`Loaded ${file.path}`)
+    return true
+  }
+
+  /** Write the open scene to a File system path and make that path the current one. */
+  saveSceneAs(path: string): boolean {
+    if (this.playing) {
+      this.log('Stop the scene before saving.', 'warn')
+      return false
+    }
+    const normalized = normalizeScenePath(path)
+    if (!normalized) {
+      this.log('Use a scene path like res://Name.tscn.', 'warn')
+      return false
+    }
+    this.scenePath = normalized
+    return this.saveOpenScene()
+  }
+
+  /** Replace the open scene with another saved file. */
+  openScene(path: string): boolean {
+    if (this.playing) {
+      this.log('Stop the scene before opening another one.', 'warn')
+      return false
+    }
+    if (path === this.scenePath) return true
+    const file = readSceneFile(path)
+    if (!file) {
+      this.log(`No saved scene at ${path}.`, 'warn')
+      return false
+    }
+    const previous = this.scenePath
+    this.scenePath = path
+    try {
+      this.applyScene(file)
+    } catch (error) {
+      this.scenePath = previous
+      const message = error instanceof Error ? error.message : String(error)
+      this.log(`Could not open ${path}: ${message}`, 'error')
+      return false
+    }
+    rememberOpenPath(path)
+    this.log(`Opened ${path}`)
+    return true
+  }
+
+  deleteScene(path: string): boolean {
+    if (path === this.scenePath) {
+      this.log('The open scene stays in the File system.', 'warn')
+      return false
+    }
+    if (!hasSceneFile(path)) return false
+    removeSceneFile(path)
+    this.log(`Removed ${path}`)
     return true
   }
 
