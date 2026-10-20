@@ -29,8 +29,10 @@ import {
   normalizeScenePath,
   preferredOpenPath,
   readSceneFile,
+  readSceneLibrary,
   rememberOpenPath,
   removeSceneFile,
+  sceneFileName,
   writeSceneFile,
   type SceneComponentRecord,
   type SceneFile,
@@ -97,6 +99,10 @@ export interface EditorNode {
   geometryId: string | null
   materialId: string | null
   componentIds: string[]
+  /** Set on the root of a linked scene instance. */
+  instancePath: string | null
+  /** Set on nodes created from an instance, so the parent scene stores the link. */
+  instanceOwnerId: string | null
   defaults: NodeDefaults
 }
 
@@ -450,9 +456,55 @@ export class EditorState {
       return false
     }
     if (!hasSceneFile(path)) return false
+    const users = this.instanceUsers(path)
+    if (users.length > 0) {
+      this.log(`${path} is instanced by ${users.join(', ')}. Remove those instances first.`, 'warn')
+      return false
+    }
     removeSceneFile(path)
     this.log(`Removed ${path}`)
     return true
+  }
+
+  /** Place a saved scene under `parentId`. The link is kept until Make Local. */
+  instanceScene(path: string, parentId?: string | null): EditorNode | null {
+    if (this.playing) {
+      this.log('Stop the scene before instancing.', 'warn')
+      return null
+    }
+    if (path === this.scenePath) {
+      this.log('A scene cannot instance itself.', 'warn')
+      return null
+    }
+    if (!readSceneFile(path)) {
+      this.log(`No saved scene at ${path}.`, 'warn')
+      return null
+    }
+    if (this.instanceCycle(path, new Set([this.scenePath]))) {
+      this.log(`${path} instances ${this.scenePath}, so it cannot be placed here.`, 'warn')
+      return null
+    }
+    const parent = this.parentOrSelected(parentId)
+    const object = new THREE.Group()
+    object.name = this.uniqueName(sceneFileName(path).replace(/\.tscn$/, '') || 'Scene')
+    parent.object.add(object)
+    const node = this.addNode(object, parent.id, 'Node3D', false)
+    node.instancePath = path
+    this.expandInstance(path, node.id, new Set([this.scenePath]))
+    this.log(`Instanced ${path}`)
+    this.select(node.id)
+    return node
+  }
+
+  makeLocal(id: string): void {
+    const node = this.nodes.get(id)
+    if (!node?.instancePath) return
+    node.instancePath = null
+    for (const other of this.nodes.values()) {
+      if (other.instanceOwnerId === id) other.instanceOwnerId = null
+    }
+    this.log(`Made ${node.name} local`)
+    this.touchScene()
   }
 
   /** Hide the grid, gizmo, and selection box when the editor route is not showing. */
@@ -751,7 +803,7 @@ export class EditorState {
   duplicate(id: string): EditorNode | null {
     const node = this.nodes.get(id)
     if (!node || node.isRoot || !node.parentId) return null
-    const copy = this.cloneNode(node, node.parentId)
+    const copy = this.cloneNode(node, node.parentId, node.instanceOwnerId)
     if ((copy.object as THREE.Mesh).isMesh) copy.object.position.x += 0.45
     this.captureDefaults(copy)
     this.log(`Duplicated ${node.name} as ${copy.name}`)
@@ -1463,6 +1515,7 @@ export class EditorState {
 
     const nodes: SceneNodeRecord[] = []
     const walk = (node: EditorNode, parentFileId: string | null): void => {
+      if (node.instanceOwnerId) return
       const id = parentFileId === null ? 'root' : `n${nodes.length}`
       nodes.push({
         id,
@@ -1483,7 +1536,9 @@ export class EditorState {
         materialId: materialIdFor(node),
         light: lightDefaultsFrom(node.object),
         components: this.componentRecords(node),
+        instance: node.instancePath,
       })
+      if (node.instancePath) return
       for (const childId of node.childIds) {
         const child = this.nodes.get(childId)
         if (child) walk(child, id)
@@ -1578,6 +1633,7 @@ export class EditorState {
     parentId: string,
     geoMap: Map<string, string>,
     matMap: Map<string, string>,
+    stack: Set<string> = new Set(),
   ): EditorNode {
     const parent = this.nodes.get(parentId)
     if (!parent) throw new Error('Parent is missing.')
@@ -1671,8 +1727,85 @@ export class EditorState {
     node.materialId = materialId
     if (record.kind === 'DirectionalLight3D' || record.kind === 'SpotLight3D') this.aimLight(object)
     this.applyComponents(node, record.components)
+    if (record.instance) {
+      node.instancePath = record.instance
+      this.expandInstance(record.instance, node.id, stack)
+    }
     this.captureDefaults(node)
     return node
+  }
+
+  /** Build a packed scene's nodes under `holderId` and mark them as owned by that instance. */
+  private expandInstance(path: string, holderId: string, stack: Set<string>): void {
+    if (stack.has(path)) {
+      this.log(`Skipped ${path}: instancing it would loop.`, 'warn')
+      return
+    }
+    const file = readSceneFile(path)
+    const holder = this.nodes.get(holderId)
+    if (!file || !holder) {
+      if (!file) this.log(`Missing scene ${path}.`, 'warn')
+      return
+    }
+    const root = file.nodes.find((node) => node.parentId === null)
+    if (!root) return
+
+    const geoMap = new Map<string, string>()
+    for (const record of file.geometries) {
+      const resource = this.createGeometryResource(record.type, record.params, record.name)
+      geoMap.set(record.id, resource.id)
+    }
+    const matMap = new Map<string, string>()
+    for (const record of file.materials) {
+      const resource = this.createMaterialResource(record.name, record.source, {
+        side: record.side,
+        transparent: record.transparent,
+        wireframe: record.wireframe,
+      })
+      const compiled = this.compileMaterial(resource.id)
+      if (!compiled.ok) this.log(`${record.name}: ${compiled.error}`, 'error')
+      matMap.set(record.id, resource.id)
+    }
+
+    const runtime = new Map<string, string>([[root.id, holderId]])
+    const next = new Set(stack)
+    next.add(path)
+    for (const record of file.nodes) {
+      if (!record.parentId) continue
+      const parentRuntime = runtime.get(record.parentId)
+      if (!parentRuntime) {
+        this.log(`Skipped ${record.name} in ${path}: its parent is missing.`, 'warn')
+        continue
+      }
+      const created = this.spawnRecord(record, parentRuntime, geoMap, matMap, next)
+      created.instanceOwnerId = holderId
+      runtime.set(record.id, created.id)
+    }
+  }
+
+  private instanceCycle(path: string, stack: Set<string>): boolean {
+    const file = readSceneFile(path)
+    if (!file) return false
+    const next = new Set(stack)
+    next.add(path)
+    for (const node of file.nodes) {
+      if (!node.instance) continue
+      if (next.has(node.instance)) return true
+      if (this.instanceCycle(node.instance, next)) return true
+    }
+    return false
+  }
+
+  private instanceUsers(path: string): string[] {
+    const users: string[] = []
+    for (const node of this.nodes.values()) {
+      if (node.instancePath === path) users.push(node.name)
+    }
+    for (const file of readSceneLibrary()) {
+      if (file.path === path) continue
+      if (file.nodes.some((node) => node.instance === path)) users.push(file.path)
+    }
+    return users
   }
 
   private applyComponents(node: EditorNode, components: SceneComponentRecord[]): void {
@@ -2089,6 +2222,8 @@ export class EditorState {
       geometryId: null,
       materialId: null,
       componentIds: [],
+      instancePath: null,
+      instanceOwnerId: null,
       defaults: this.defaultsFrom(object),
     }
     this.nodes.set(id, node)
@@ -2120,6 +2255,8 @@ export class EditorState {
       geometryId: null,
       materialId: null,
       componentIds: [],
+      instancePath: null,
+      instanceOwnerId: null,
       defaults: this.defaultsFrom(object),
     }
     this.nodes.set(id, node)
@@ -2130,12 +2267,14 @@ export class EditorState {
     return node
   }
 
-  private cloneNode(node: EditorNode, parentId: string): EditorNode {
+  private cloneNode(node: EditorNode, parentId: string, ownerId: string | null): EditorNode {
     const object = node.object.clone(false)
     object.name = this.uniqueName(node.name)
     const parent = this.nodes.get(parentId)
     parent?.object.add(object)
     const copy = this.addNode(object, parentId, node.kind, node.imported)
+    copy.instancePath = node.instancePath
+    copy.instanceOwnerId = ownerId
     copy.geometryId = node.geometryId
     copy.materialId = node.materialId
     if (copy.geometryId) {
@@ -2147,9 +2286,10 @@ export class EditorState {
       if (material && object instanceof THREE.Mesh) object.material = material
     }
     if (!copy.geometryId && object instanceof THREE.Mesh) object.geometry = object.geometry.clone()
+    const childOwner = node.instancePath ? copy.id : ownerId
     for (const childId of node.childIds) {
       const child = this.nodes.get(childId)
-      if (child) this.cloneNode(child, copy.id)
+      if (child) this.cloneNode(child, copy.id, childOwner)
     }
     for (const componentId of node.componentIds) {
       const instance = this.componentInstances.get(componentId)

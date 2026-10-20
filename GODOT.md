@@ -52,6 +52,7 @@ When a feature lands, move it from **Not yet** into **Already in place**. Do not
 
 - Save Scene and Load Scene write the node tree, transforms, geometry, materials, light settings, component parameters, and the World background, shadows, and grid. Ctrl+Shift+S saves the open scene, and Ctrl+Shift+L loads it. The scene tab shows `(*)` until that save.
 - The File system lists saved scenes. The open scene uses that path (`res://World.tscn` until Save Scene As), and the scene tab shows the same file. Ctrl+Alt+S saves to another `res://` path. Click a scene file to open it. An unsaved scene asks before it is replaced.
+- Drag a saved scene onto a node, or choose Scene → Instance Scene (Ctrl+Shift+A), to place it as a child. The instance stays linked to that scene. Make Local copies the nodes into the open scene. A scene cannot instance itself or a scene that instances it.
 
 ### Resources
 
@@ -80,10 +81,6 @@ When a feature lands, move it from **Not yet** into **Already in place**. Do not
 ## Not yet
 
 Build these in an order that keeps the editor usable. A half-wired Godot feature is worse than leaving it off.
-
-### Scene file
-
-- Instancing one scene inside another.
 
 ### History
 

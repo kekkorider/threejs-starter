@@ -42,7 +42,11 @@ export interface SceneNodeRecord {
   materialId: string | null
   light: LightDefaults | null
   components: SceneComponentRecord[]
+  /** Packed scene placed at this node. Children come from that file. */
+  instance?: string | null
 }
+
+export const SCENE_DRAG_PREFIX = 'scene:'
 
 /** Packed scene: the node tree plus the geometry, materials, and light settings it uses. */
 export interface SceneFile {
@@ -231,6 +235,7 @@ function isNodeRecord(value: unknown): value is SceneNodeRecord {
     && (record.light === null || isLight(record.light))
     && Array.isArray(record.components)
     && record.components.every(isComponentRecord)
+    && (record.instance == null || (typeof record.instance === 'string' && record.instance.startsWith('res://')))
 }
 
 function isComponentRecord(value: unknown): value is SceneComponentRecord {

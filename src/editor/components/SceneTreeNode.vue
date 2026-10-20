@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import { COMPONENT_DRAG_PREFIX, INSTANCE_DRAG_PREFIX } from '../behaviors'
+import { SCENE_DRAG_PREFIX } from '../sceneFile'
 import { kindClass, kindIcon } from '../lib/format'
 import { useEditorStore } from '../stores/editor'
 import Icon from './Icon.vue'
@@ -55,6 +56,10 @@ function acceptDrop(event: DragEvent): void {
     store.moveComponent(data.slice(INSTANCE_DRAG_PREFIX.length), props.id)
     return
   }
+  if (data.startsWith(SCENE_DRAG_PREFIX)) {
+    store.instanceScene(data.slice(SCENE_DRAG_PREFIX.length), props.id)
+    return
+  }
   store.reparent(data, props.id)
 }
 
@@ -81,6 +86,7 @@ function componentVisible(componentId: string): boolean {
       :class="{ selected: store.selectedId === node.id && !node.componentIds.includes(store.selectedComponentId ?? ''), 'drop-target': drop }"
       :style="{ paddingLeft: `${6 + depth * 14}px` }"
       :draggable="!node.isRoot"
+      :title="node.instancePath ? `Instance of ${node.instancePath}` : undefined"
       @click="store.select(node.id)"
       @dblclick.stop="store.beginRename(node.id)"
       @contextmenu.prevent="store.openContextMenu(node.id, $event.clientX, $event.clientY)"
@@ -97,8 +103,8 @@ function componentVisible(componentId: string): boolean {
       >
         <Icon name="chevron-down" />
       </button>
-      <span class="kind-icon" :class="kindClass(node.kind)">
-        <Icon :name="kindIcon(node.kind)" />
+      <span class="kind-icon" :class="node.instancePath ? 'scene' : kindClass(node.kind)">
+        <Icon :name="node.instancePath ? 'scene' : kindIcon(node.kind)" />
       </span>
       <input
         v-if="renaming"

@@ -29,6 +29,7 @@ export interface NodeSnapshot {
   childIds: string[]
   componentIds: string[]
   isRoot: boolean
+  instancePath: string | null
 }
 
 export interface ComponentFileSnapshot {
@@ -69,6 +70,7 @@ export interface InspectorView {
   kind: NodeKind
   isRoot: boolean
   inherits: string
+  instancePath: string | null
   visible: boolean
   castShadow: boolean | null
   receiveShadow: boolean | null
@@ -179,7 +181,7 @@ export const useEditorStore = defineStore('editor', () => {
   const scenePath = ref(engine.scenePath)
   const sceneDirty = ref(true)
   const sceneSaved = ref(false)
-  const sceneDialog = ref<'' | 'save-as' | 'unsaved'>('')
+  const sceneDialog = ref<'' | 'save-as' | 'unsaved' | 'instance'>('')
   const sceneDialogPath = ref('res://NewScene.tscn')
   const sceneDialogError = ref('')
   const pendingScenePath = ref('')
@@ -201,6 +203,7 @@ export const useEditorStore = defineStore('editor', () => {
         childIds: [...node.childIds],
         componentIds: [...node.componentIds],
         isRoot: node.isRoot,
+        instancePath: node.instancePath,
       })
     }
     return list
@@ -289,6 +292,8 @@ export const useEditorStore = defineStore('editor', () => {
       }))
   })
 
+  const instanceChoices = computed(() => sceneFiles.value.filter((file) => file.saved && !file.open))
+
   const sceneSaveAsReplaces = computed(() => {
     const path = normalizeScenePath(sceneDialogPath.value)
     return Boolean(path && path !== scenePath.value && hasSceneFile(path))
@@ -339,6 +344,7 @@ export const useEditorStore = defineStore('editor', () => {
       kind: node.kind,
       isRoot: node.isRoot,
       inherits: entry?.inherits ?? node.kind,
+      instancePath: node.instancePath,
       visible: node.object.visible,
       castShadow: castShadowOf(node.object),
       receiveShadow: node.object instanceof THREE.Mesh ? node.object.receiveShadow : null,
@@ -1001,6 +1007,40 @@ export const useEditorStore = defineStore('editor', () => {
     if (!removed) bottomTab.value = 'output'
   }
 
+  function openInstanceDialog(): void {
+    if (!ready.value) return
+    closePopups()
+    helpTopic.value = ''
+    createOpen.value = false
+    componentOpen.value = false
+    sceneDialogError.value = ''
+    sceneDialog.value = 'instance'
+  }
+
+  function instanceScene(path: string, parentId?: string | null): void {
+    sceneDialog.value = ''
+    const node = engine.instanceScene(path, parentId === undefined ? engine.selectedId : parentId)
+    if (node) {
+      const next = new Set(expanded.value)
+      const walk = (id: string): void => {
+        next.add(id)
+        const current = engine.nodes.get(id)
+        if (!current) return
+        for (const childId of current.childIds) walk(childId)
+      }
+      if (node.parentId) next.add(node.parentId)
+      walk(node.id)
+      expanded.value = next
+    }
+    touch()
+    if (!node) bottomTab.value = 'output'
+  }
+
+  function makeLocal(id: string): void {
+    engine.makeLocal(id)
+    touch()
+  }
+
   function openCreate(kind: NodeKind = 'MeshInstance3D', presetId?: string): void {
     if (!ready.value) return
     closePopups()
@@ -1327,6 +1367,7 @@ export const useEditorStore = defineStore('editor', () => {
       return [
         { label: 'Save Scene', shortcut: 'Ctrl+Shift+S', action: () => saveOpenScene() },
         { label: 'Save Scene As…', shortcut: 'Ctrl+Alt+S', action: () => openSaveAs() },
+        { label: 'Instance Scene…', shortcut: 'Ctrl+Shift+A', disabled: instanceChoices.value.length === 0, action: () => openInstanceDialog() },
         { label: 'Load Scene', shortcut: 'Ctrl+Shift+L', disabled: !engine.hasSavedScene(), action: () => loadOpenScene() },
         { separator: true, label: '', action: () => {} },
         { label: 'Create Node…', shortcut: 'Ctrl+A', action: () => openCreate() },
@@ -1361,15 +1402,20 @@ export const useEditorStore = defineStore('editor', () => {
     select(id)
     const node = engine.nodes.get(id)
     if (!node) return
-    showPopup(new DOMRect(x, y, 0, 0), [
+    const items: MenuItem[] = [
       { label: 'Add Child Node…', action: () => openCreate() },
+      { label: 'Instance Scene…', disabled: instanceChoices.value.length === 0, action: () => openInstanceDialog() },
+    ]
+    if (node.instancePath) items.push({ label: 'Make Local', action: () => makeLocal(id) })
+    items.push(
       { label: 'Add Component…', action: () => openComponentDialog() },
       { label: 'Rename', disabled: node.isRoot, action: () => beginRename(id) },
       { label: 'Duplicate', disabled: node.isRoot, action: () => duplicateSelection() },
       { label: 'Delete', disabled: node.isRoot, action: () => deleteSelection() },
       { separator: true, label: '', action: () => {} },
       { label: 'Focus', disabled: node.isRoot, action: () => engine.focusSelected() },
-    ], false)
+    )
+    showPopup(new DOMRect(x, y, 0, 0), items, false)
   }
 
   function openComponentMenu(id: string, x: number, y: number): void {
@@ -1498,7 +1544,10 @@ export const useEditorStore = defineStore('editor', () => {
     }
     if (typing || createOpen.value || componentOpen.value || helpTopic.value || sceneDialog.value) return
     const key = event.key.toLowerCase()
-    if ((event.ctrlKey || event.metaKey) && key === 'a') {
+    if ((event.ctrlKey || event.metaKey) && event.shiftKey && key === 'a') {
+      event.preventDefault()
+      openInstanceDialog()
+    } else if ((event.ctrlKey || event.metaKey) && key === 'a') {
       event.preventDefault()
       openCreate()
     } else if ((event.ctrlKey || event.metaKey) && key === 'c') {
@@ -1591,6 +1640,7 @@ export const useEditorStore = defineStore('editor', () => {
     sceneSaved,
     sceneLabel,
     sceneFiles,
+    instanceChoices,
     sceneDialog,
     sceneDialogPath,
     sceneDialogError,
@@ -1687,6 +1737,9 @@ export const useEditorStore = defineStore('editor', () => {
     discardAndOpen,
     cancelSceneDialog,
     deleteSceneFile,
+    openInstanceDialog,
+    instanceScene,
+    makeLocal,
     openCreate,
     createFromDraft,
     openComponentDialog,

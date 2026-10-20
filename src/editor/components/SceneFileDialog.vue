@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Icon from './Icon.vue'
 import { useEditorStore } from '../stores/editor'
 
 const store = useEditorStore()
@@ -36,6 +37,31 @@ function onKey(event: KeyboardEvent): void {
         <span class="spacer" />
         <button type="button" class="btn" @click="store.cancelSceneDialog()">Cancel</button>
         <button type="button" class="btn primary" @click="store.confirmSaveAs()">Save</button>
+      </div>
+    </div>
+    <div v-else-if="store.sceneDialog === 'instance'" class="dialog warning" role="dialog" aria-labelledby="instance-title">
+      <div class="dialog-title">
+        <span id="instance-title">Instance Scene</span>
+      </div>
+      <div class="warning-body">
+        <p>The instance stays linked to the saved scene. Make Local copies it into this one.</p>
+        <p v-if="store.instanceChoices.length === 0">Save another scene, then instance it here.</p>
+        <div v-else class="scene-choices">
+          <button
+            v-for="file in store.instanceChoices"
+            :key="file.path"
+            type="button"
+            class="file-row"
+            @click="store.instanceScene(file.path)"
+          >
+            <span class="kind-icon scene"><Icon name="scene" /></span>
+            <span class="label">{{ file.path }}</span>
+          </button>
+        </div>
+      </div>
+      <div class="dialog-actions">
+        <span class="spacer" />
+        <button type="button" class="btn" @click="store.cancelSceneDialog()">Cancel</button>
       </div>
     </div>
     <div v-else class="dialog warning" role="dialog" aria-labelledby="unsaved-title">

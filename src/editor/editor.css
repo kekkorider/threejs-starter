@@ -757,6 +757,22 @@
 }
 .warning-body .hint { padding: 0 0 8px; }
 .warning-body .hint.error { color: #ffb4b4; }
+.instance-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  color: var(--font-dim);
+}
+.instance-note span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.scene-choices { display: flex; flex-direction: column; gap: 2px; margin: 0 0 8px; }
+.scene-choices .file-row { border-radius: 4px; }
 
 .placeholder { z-index: 2; }
 .viewport-wrap { z-index: 1; }

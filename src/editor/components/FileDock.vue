@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { COMPONENT_DRAG_PREFIX } from '../behaviors'
+import { SCENE_DRAG_PREFIX } from '../sceneFile'
 import Icon from './Icon.vue'
 import { useEditorStore } from '../stores/editor'
 
@@ -28,6 +29,20 @@ const components = computed(() => store.componentFiles.filter((file) => {
 
 const empty = computed(() => scenes.value.length === 0 && meshes.value.length === 0 && materials.value.length === 0 && components.value.length === 0)
 
+function onSceneClick(path: string): void {
+  if (suppressClick) {
+    suppressClick = false
+    return
+  }
+  store.openSceneFile(path)
+}
+
+function onSceneDrag(event: DragEvent, path: string): void {
+  suppressClick = true
+  event.dataTransfer?.setData('text/plain', `${SCENE_DRAG_PREFIX}${path}`)
+  if (event.dataTransfer) event.dataTransfer.effectAllowed = 'copy'
+}
+
 function onComponentDrag(event: DragEvent, id: string): void {
   suppressClick = true
   event.dataTransfer?.setData('text/plain', `${COMPONENT_DRAG_PREFIX}${id}`)
@@ -54,8 +69,10 @@ function onComponentClick(id: string): void {
         :key="file.path"
         class="file-row"
         :class="{ selected: file.open && store.selectedId === store.rootId }"
-        :title="file.open ? 'Open scene' : 'Open this scene'"
-        @click="store.openSceneFile(file.path)"
+        :title="file.saved && !file.open ? 'Drag onto the scene tree to instance' : (file.open ? 'Open scene' : 'Open this scene')"
+        :draggable="file.saved && !file.open"
+        @click="onSceneClick(file.path)"
+        @dragstart="onSceneDrag($event, file.path)"
       >
         <span class="kind-icon scene"><Icon name="scene" /></span>
         <span class="label">{{ file.path }}{{ file.open && store.sceneDirty ? ' (*)' : '' }}</span>
