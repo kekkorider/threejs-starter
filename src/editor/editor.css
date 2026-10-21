@@ -830,12 +830,14 @@
   gap: 10px;
 }
 .script-dock .empty-note p { margin: 0; }
-.dock-script .tsl-bar .name {
+.dock-script .tsl-bar .name,
+.dock-script .tsl-bar .status {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
 }
+.dock-script .tsl-bar .status { max-width: 42%; }
 .script-files .empty-note { text-align: left; }
 .row-delete, .row-close { width: 18px; height: 18px; margin-left: auto; flex: none; }
 .row-delete .ico, .row-close .ico { width: 12px; height: 12px; }

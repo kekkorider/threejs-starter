@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { nextTick, onMounted, ref } from 'vue'
 import { useEditorStore, type MenuItem } from '../stores/editor'
 import Icon from './Icon.vue'
 
@@ -12,16 +12,25 @@ const props = defineProps<{
 
 const store = useEditorStore()
 const root = ref<HTMLDivElement | null>(null)
+const left = ref(props.x)
+const top = ref(props.y + 4)
 
 onMounted(() => {
-  const menu = root.value
-  if (!menu) return
-  const width = menu.offsetWidth
-  const height = menu.offsetHeight
-  const left = props.alignStart ? props.x : Math.min(props.x, window.innerWidth - width - 8)
-  const top = Math.min(props.y + 4, window.innerHeight - height - 8)
-  menu.style.left = `${Math.max(8, left)}px`
-  menu.style.top = `${Math.max(8, top)}px`
+  void nextTick(() => {
+    const menu = root.value
+    if (!menu) return
+    const width = menu.offsetWidth
+    const height = menu.offsetHeight
+    const margin = 8
+    const maxLeft = window.innerWidth - width - margin
+    const aligned = props.alignStart ? props.x : Math.min(props.x, maxLeft)
+    left.value = Math.max(margin, aligned)
+    const below = props.y + 4
+    const above = props.y - height - 4
+    if (below + height <= window.innerHeight - margin) top.value = below
+    else if (above >= margin) top.value = above
+    else top.value = Math.max(margin, window.innerHeight - height - margin)
+  })
 })
 
 function choose(item: MenuItem, event: MouseEvent): void {
@@ -33,7 +42,7 @@ function choose(item: MenuItem, event: MouseEvent): void {
 </script>
 
 <template>
-  <div ref="root" class="menu-pop" :style="{ left: `${x}px`, top: `${y + 4}px` }">
+  <div ref="root" class="menu-pop" :style="{ left: `${left}px`, top: `${top}px` }">
     <template v-for="(item, index) in items" :key="index">
       <div v-if="item.separator" class="menu-sep" />
       <button

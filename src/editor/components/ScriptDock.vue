@@ -15,8 +15,8 @@ const shared = computed(() => !!active.value && active.value.resourceId === stor
 const slotText = computed(() => {
   const current = active.value
   if (!current) return '[empty]'
-  if (scripts.value.length > 1) return `${current.label} · ${current.path}`
-  return current.path
+  if (scripts.value.length > 1) return current.label
+  return `${current.name}.ts`
 })
 const status = computed(() => (shared.value ? store.scriptStatus : store.dockStatus))
 const statusError = computed(() => (shared.value ? store.scriptError : store.dockError))
@@ -112,6 +112,7 @@ function onDrop(event: DragEvent): void {
             v-if="status"
             :key="statusKey"
             class="status"
+            :title="status"
             :class="{ error: statusError, ok: !statusError, fade: status === 'Applied' }"
           >{{ status }}</span>
           <button type="button" class="icon-btn" title="Open in Script Editor" @click="store.editComponent(active.id)">
