@@ -20,6 +20,7 @@
   --mesh: #e0943f;
   --node: #78aef8;
   --light: #f0d264;
+  --camera: #6ec8e0;
   --left: 272px;
   --right: 318px;
   --bottom: 236px;
@@ -229,6 +230,7 @@
 .tree-row .kind-icon.node, .file-row .node { color: var(--node); }
 .tree-row .kind-icon.mesh, .file-row .mesh { color: var(--mesh); }
 .tree-row .kind-icon.light, .file-row .light { color: var(--light); }
+.tree-row .kind-icon.camera, .file-row .camera, .node-head .kind-icon.camera { color: var(--camera); }
 .tree-row .kind-icon.component, .file-row .component, .node-head .kind-icon.component { color: #7ec8e3; }
 .tree-row .kind-icon.scene, .file-row .scene { color: #7aa2ff; }
 .tree-row .kind-icon .ico, .file-row .ico { width: 14px; height: 14px; display: block; -webkit-user-drag: none; }
@@ -530,6 +532,7 @@
 .section.collapsed .section-b { display: none; }
 .section-b { padding: 2px 0 6px; }
 .section.sub.mesh { box-shadow: inset 2px 0 0 var(--mesh); }
+.section.sub.camera { box-shadow: inset 2px 0 0 var(--camera); }
 .section.sub.mat { box-shadow: inset 2px 0 0 #3d9a78; }
 
 .prop {
@@ -561,6 +564,10 @@
 }
 .prop input:focus, .prop select:focus, .dialog input:focus, .dialog select:focus, .vec3 input:focus {
   border-color: var(--accent);
+}
+.prop input:disabled {
+  color: var(--font-mute);
+  opacity: 1;
 }
 .prop input[type="color"] {
   width: 100%;

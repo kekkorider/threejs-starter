@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { kindClass, kindIcon } from '../lib/format'
 import { useEditorStore } from '../stores/editor'
+import CameraSection from './inspector/CameraSection.vue'
 import ComponentSection from './inspector/ComponentSection.vue'
 import GeometrySection from './inspector/GeometrySection.vue'
 import GridSection from './inspector/GridSection.vue'
@@ -54,6 +55,7 @@ function onName(event: Event): void {
         <SceneSection />
         <GridSection />
         <TransformSection />
+        <CameraSection />
         <GeometrySection />
         <MaterialSection />
         <LightSection />

@@ -2,6 +2,7 @@
 import { computed, reactive, ref } from 'vue'
 import CodeEditor from './CodeEditor.vue'
 import Icon from './Icon.vue'
+import { defaultCameraSettings } from '../camera'
 import { GEOMETRY_CATALOG, defaultParams, geometryEntry, type GeometryType, type ParamSpec } from '../geometry'
 import { kindClass, kindIcon } from '../lib/format'
 import { NODE_TYPES, type NodeKind } from '../state'
@@ -24,9 +25,18 @@ const draft = reactive({
   range: 12,
   angle: 35,
   penumbra: 0.4,
+  projection: defaultCameraSettings().projection,
+  fov: defaultCameraSettings().fov,
+  near: defaultCameraSettings().near,
+  far: defaultCameraSettings().far,
+  zoom: defaultCameraSettings().zoom,
+  left: defaultCameraSettings().left,
+  right: defaultCameraSettings().right,
+  top: defaultCameraSettings().top,
+  bottom: defaultCameraSettings().bottom,
 })
 const error = ref('')
-const groups = ['Node', 'Mesh', 'Light']
+const groups = ['Node', 'Mesh', 'Camera', 'Light']
 
 const entry = computed(() => NODE_TYPES.find((item) => item.kind === draft.kind) ?? NODE_TYPES[0]!)
 const specs = computed(() => geometryEntry(draft.geometryType).params)
@@ -71,6 +81,15 @@ function submit(): void {
     range: draft.range,
     angle: draft.angle,
     penumbra: draft.penumbra,
+    projection: draft.projection,
+    fov: draft.fov,
+    near: draft.near,
+    far: draft.far,
+    zoom: draft.zoom,
+    left: draft.left,
+    right: draft.right,
+    top: draft.top,
+    bottom: draft.bottom,
   })
   error.value = message ?? ''
 }
@@ -157,6 +176,50 @@ function onBackdrop(event: PointerEvent): void {
             <CodeEditor v-model="draft.source" />
             <div class="hint">{{ error }}</div>
           </template>
+          <template v-else-if="draft.kind === 'Camera3D'">
+            <div class="prop">
+              <div class="prop-label">Projection</div>
+              <select v-model="draft.projection">
+                <option value="perspective">Perspective</option>
+                <option value="orthographic">Orthographic</option>
+              </select>
+            </div>
+            <div v-if="draft.projection === 'perspective'" class="prop">
+              <div class="prop-label">FOV</div>
+              <input v-model.number="draft.fov" type="number" min="1" max="179" step="0.1" />
+            </div>
+            <template v-else>
+              <div class="prop">
+                <div class="prop-label">Left</div>
+                <input v-model.number="draft.left" type="number" step="0.1" />
+              </div>
+              <div class="prop">
+                <div class="prop-label">Right</div>
+                <input v-model.number="draft.right" type="number" step="0.1" />
+              </div>
+              <div class="prop">
+                <div class="prop-label">Top</div>
+                <input v-model.number="draft.top" type="number" step="0.1" />
+              </div>
+              <div class="prop">
+                <div class="prop-label">Bottom</div>
+                <input v-model.number="draft.bottom" type="number" step="0.1" />
+              </div>
+            </template>
+            <div class="prop">
+              <div class="prop-label">Near</div>
+              <input v-model.number="draft.near" type="number" min="0" step="0.01" />
+            </div>
+            <div class="prop">
+              <div class="prop-label">Far</div>
+              <input v-model.number="draft.far" type="number" min="0.01" step="0.1" />
+            </div>
+            <div class="prop">
+              <div class="prop-label">Zoom</div>
+              <input v-model.number="draft.zoom" type="number" min="0.001" step="0.01" />
+            </div>
+            <div class="hint">The inspector edits the rest of the lens after the camera is created.</div>
+          </template>
           <template v-else-if="draft.kind !== 'Node3D'">
             <div class="prop">
               <div class="prop-label">Color</div>
@@ -189,7 +252,7 @@ function onBackdrop(event: PointerEvent): void {
       </div>
       <div class="dialog-actions">
         <label class="name-label">Name</label>
-        <input v-model="draft.name" type="text" placeholder="MeshInstance" />
+        <input v-model="draft.name" type="text" :placeholder="entry.label" />
         <span class="spacer" />
         <button type="button" class="btn" @click="store.createOpen = false">Cancel</button>
         <button type="button" class="btn primary" @click="submit">Create</button>

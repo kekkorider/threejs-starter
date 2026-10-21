@@ -14,13 +14,13 @@ When a feature lands, move it from **Not yet** into **Already in place**. Do not
 - Docks: Scene tree, File system, Inspector, and a bottom panel with TSL and Output.
 - Screens: 3D, Script, Game, AssetLib. The 2D screen was removed on purpose. Everything in this editor is 3D.
 - Draggable splitters. Dragging the File system splitter upward makes that dock taller.
-- Create Node dialog, grouped as Node, Mesh, and Light.
+- Create Node dialog, grouped as Node, Mesh, Camera, and Light.
 - Right-click menus on the scene tree and on inspector values.
 
 ### Scene tree
 
 - A World root.
-- Node kinds: Node, MeshInstance, DirectionalLight, OmniLight, SpotLight, HemisphereLight. Visible names do not use a `3D` suffix.
+- Node kinds: Node, MeshInstance, Camera, DirectionalLight, OmniLight, SpotLight, HemisphereLight. Visible names do not use a `3D` suffix.
 - Add, rename, duplicate, delete, and reparent.
 - Nodes created in the editor stay in the scene when you leave `/editor`.
 
@@ -34,6 +34,7 @@ When a feature lands, move it from **Not yet** into **Already in place**. Do not
 - Play, pause, and stop. Play hides the grid, gizmos, and light badges.
 - Orbit controls start aimed at `[0, 0, 0]`.
 - Each light has a labeled badge: Directional, Omni, Spot, Hemisphere.
+- A camera draws its frustum and a Camera badge. The badge hides while you look through that camera.
 - Directional and spot lights also draw an arrow along the direction they shine (local -Z). Omni and hemisphere lights have no single aim, so they do not get an arrow.
 - Shaded draws the picture. Debug Split replaces it with four labeled quadrants: shaded color (top-left), camera distance (top-right, closer is darker and anything past about 32 m stays white), view-space normals (bottom-left), and motion since the previous frame (bottom-right, still pixels gray).
 
@@ -44,13 +45,14 @@ When a feature lands, move it from **Not yet** into **Already in place**. Do not
 - Geometry type and parameters, including shared geometry.
 - Material name, TSL preset, cull mode, transparency, and wireframe. The name is the file-system path.
 - Light color, energy, range, spot angle, penumbra, and Look at for directional and spot lights.
+- Camera projection, Perspective or Orthographic. Perspective edits FOV, aspect, focus, film gauge, film offset, and focal length, and shows effective FOV, film width, and film height. Orthographic edits left, right, top, and bottom. Both edit near, far, zoom, layers, and view offset (enabled, full width, full height, offset, width, height). Sync Viewport fits the picture to the window while that camera is the view. Current is the camera Play uses. Preview looks through it in the editor.
 - Visibility, cast shadow, and receive shadow.
 - On World: background color and intensity, environment intensity, shadows on or off, shadow type (Basic, PCF, VSM), and the grid.
 - Right-click a value and choose Reset to restore the value it was created with.
 
 ### Scene file
 
-- Save Scene and Load Scene write the node tree, transforms, geometry, materials, light settings, component parameters, and the World background, shadows, and grid. Ctrl+Shift+S saves the open scene, and Ctrl+Shift+L loads it. The scene tab shows `(*)` until that save.
+- Save Scene and Load Scene write the node tree, transforms, geometry, materials, light settings, camera settings, component parameters, and the World background, shadows, and grid. Ctrl+Shift+S saves the open scene, and Ctrl+Shift+L loads it. The scene tab shows `(*)` until that save.
 - The File system lists saved scenes. The open scene uses that path (`res://World.tscn` until Save Scene As), and the scene tab shows the same file. Ctrl+Alt+S saves to another `res://` path. Click a scene file to open it. An unsaved scene asks before it is replaced.
 - Drag a saved scene onto a node, or choose Scene → Instance Scene (Ctrl+Shift+A), to place it as a child. The instance stays linked to that scene. Make Local copies the nodes into the open scene. A scene cannot instance itself or a scene that instances it.
 
@@ -90,7 +92,6 @@ Build these in an order that keeps the editor usable. A half-wired Godot feature
 
 ### Nodes still missing
 
-- Camera.
 - WorldEnvironment as its own node, instead of scene fields on World.
 - Skeleton, bone, and animation player.
 - Audio listener and players.
