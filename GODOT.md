@@ -36,6 +36,7 @@ When a feature lands, move it from **Not yet** into **Already in place**. Do not
 - Each light has a labeled badge: Directional, Omni, Spot, Hemisphere.
 - A camera draws its frustum and a Camera badge. The badge hides while you look through that camera.
 - Directional and spot lights also draw an arrow along the direction they shine (local -Z). Omni and hemisphere lights have no single aim, so they do not get an arrow.
+- Spot lights also draw a cone: a ring where Angle meets Range, eight spokes back to the light, and a center line out to Range. The direction arrow stays. A Range of 0 does not end, so that cone is drawn at a fixed length.
 - Shaded draws the picture. Debug Split replaces it with four labeled quadrants: shaded color (top-left), camera distance (top-right, closer is darker and anything past about 32 m stays white), view-space normals (bottom-left), and motion since the previous frame (bottom-right, still pixels gray).
 
 ### Inspector
@@ -105,7 +106,6 @@ Build these in an order that keeps the editor usable. A half-wired Godot feature
 
 ### Viewport
 
-- A spot-light cone gizmo, in addition to the direction arrow.
 - Multi-select and a selection box drag.
 - Viewport menus on a node (Godot's right-click in the 3D view).
 - Preview sun and environment from the viewport, the way Godot previews a DirectionalLight.

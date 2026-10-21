@@ -42,7 +42,7 @@ import {
   type CameraSettings,
 } from './camera'
 import { attachCameraIcon, disposeCameraIcon } from './cameraIcons'
-import { attachLightArrow, attachLightIcon, disposeLightArrow, disposeLightIcon, type LightIconKind } from './lightIcons'
+import { attachLightArrow, attachLightIcon, attachSpotCone, disposeLightArrow, disposeLightIcon, disposeSpotCone, updateSpotCone, type LightIconKind } from './lightIcons'
 import {
   hasSceneFile,
   normalizeScenePath,
@@ -2529,6 +2529,7 @@ export class EditorState {
     if (!kind) return
     attachLightIcon(node.object, kind)
     if (kind === 'directional' || kind === 'spot') attachLightArrow(node.object)
+    if (kind === 'spot') attachSpotCone(node.object)
   }
 
   private updateLightIcons(): void {
@@ -2540,6 +2541,11 @@ export class EditorState {
       const show = visible && node.object.visible
       const arrow = node.object.getObjectByName('LightArrow')
       if (arrow) arrow.visible = show
+      const cone = node.object.getObjectByName('SpotCone')
+      if (cone) {
+        cone.visible = show
+        if (show) updateSpotCone(node.object)
+      }
       const icon = node.object.getObjectByName('LightIcon') ?? node.object.getObjectByName('CameraIcon')
       if (!icon) continue
       icon.visible = show && this.activeCameraId() !== node.id
@@ -2555,13 +2561,17 @@ export class EditorState {
 
   private measureBounds(object: THREE.Object3D, target: THREE.Box3): THREE.Box3 {
     const hidden: { object: THREE.Object3D, visible: boolean }[] = []
-    for (const name of ['LightIcon', 'LightArrow', 'CameraIcon']) {
+    for (const name of ['LightIcon', 'LightArrow', 'CameraIcon', 'SpotCone']) {
       const child = object.getObjectByName(name)
       if (!child) continue
       hidden.push({ object: child, visible: child.visible })
       child.visible = false
     }
+    // The cone is real geometry. Hiding it does not keep it out of the bounds.
+    const cone = object.getObjectByName('SpotCone')
+    cone?.removeFromParent()
     target.setFromObject(object)
+    if (cone) object.add(cone)
     for (const entry of hidden) entry.object.visible = entry.visible
     return target
   }
@@ -2569,8 +2579,8 @@ export class EditorState {
   private releaseLights(object: THREE.Object3D): void {
     const lights: THREE.Object3D[] = []
     object.traverse((child) => {
-      if (child.userData.lightIcon || child.userData.lightArrow) return
-      if (child.getObjectByName('LightIcon') || child.getObjectByName('LightArrow') || child instanceof THREE.DirectionalLight || child instanceof THREE.SpotLight) {
+      if (child.userData.lightIcon || child.userData.lightArrow || child.userData.spotCone) return
+      if (child.getObjectByName('LightIcon') || child.getObjectByName('LightArrow') || child.getObjectByName('SpotCone') || child instanceof THREE.DirectionalLight || child instanceof THREE.SpotLight) {
         lights.push(child)
       }
     })
@@ -2578,6 +2588,7 @@ export class EditorState {
       if (light instanceof THREE.DirectionalLight || light instanceof THREE.SpotLight) light.target.removeFromParent()
       disposeLightIcon(light)
       disposeLightArrow(light)
+      disposeSpotCone(light)
     }
   }
 
