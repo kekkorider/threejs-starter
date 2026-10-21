@@ -42,7 +42,7 @@ const active = computed(() => store.openScripts.find((file) => file.id === store
         <button type="button" class="btn" :disabled="!store.scriptDirty" @click="store.saveActiveScript(true)">Apply</button>
       </div>
       <CodeEditor v-if="active" v-model="store.scriptSource" language="typescript" @change="store.onScriptChange" />
-      <div v-else class="empty-note script-empty">Double-click a component in the scene tree, or right-click it and choose Edit.</div>
+      <div v-else class="empty-note script-empty">Double-click a component in the scene tree, right-click it and choose Edit, or open a script from the Script dock.</div>
     </div>
   </div>
 </template>

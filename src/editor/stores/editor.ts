@@ -15,7 +15,7 @@ import { GEOMETRY_CATALOG, triangleCount, type GeometryType } from '../geometry'
 import type { NodeKind, ToolMode } from '../state'
 import { EditorState, NODE_LABEL, NODE_TYPES, type EditorNode, type GridSettings, type LogLine, type SceneSettings, type ShadowTypeName } from '../state'
 import { kindClass, kindIcon } from '../lib/format'
-import type { ComponentParameter } from '../behaviors'
+import { COMPONENT_DRAG_PREFIX, INSTANCE_DRAG_PREFIX, type ComponentParameter } from '../behaviors'
 import { EditorHistory, sameScene, type HistoryRow, type SelectionBookmark } from '../history'
 import { hasSceneFile, normalizeScenePath, readSceneLibrary, sceneFileName, type SceneFile } from '../sceneFile'
 import { DEFAULT_FLAGS, TSL_PRESETS, matchingPresetId, type MaterialSide } from '../tsl'
@@ -199,6 +199,12 @@ export const useEditorStore = defineStore('editor', () => {
   const scriptStatusKey = ref(0)
   const scriptError = ref(false)
   const scriptDrafts = ref<Record<string, string>>({})
+  const dockInstanceId = ref<string | null>(null)
+  const dockResourceId = ref<string | null>(null)
+  const dockSource = ref('')
+  const dockStatus = ref('')
+  const dockStatusKey = ref(0)
+  const dockError = ref(false)
   const helpTopic = ref<'' | 'tsl' | 'shortcuts'>('')
   const popup = ref<PopupState | null>(null)
   const openMenuName = ref('')
@@ -214,6 +220,9 @@ export const useEditorStore = defineStore('editor', () => {
   const metaTris = ref(0)
   let compileTimer = 0
   let scriptStatusTimer = 0
+  let dockStatusTimer = 0
+  /** Instance the Script dock should show on the next selection sync. */
+  let pinnedDockId: string | null = null
   let viewportBound = false
   const history = new EditorHistory()
   const historyTick = ref(0)
@@ -460,6 +469,7 @@ export const useEditorStore = defineStore('editor', () => {
     revision.value += 1
     syncMaterial(forceMaterial)
     writeMeta()
+    syncDockFromSelection()
   }
 
   function nodeLabel(id: string | null | undefined): string {
@@ -1743,6 +1753,7 @@ export const useEditorStore = defineStore('editor', () => {
   })
 
   function showScript(resourceId: string): void {
+    if (dockResourceId.value === resourceId) rememberDockBuffer()
     if (!openScriptIds.value.includes(resourceId)) {
       openScriptIds.value = [...openScriptIds.value, resourceId]
     }
@@ -1797,6 +1808,272 @@ export const useEditorStore = defineStore('editor', () => {
       scriptStatus.value = ''
       scriptError.value = false
     }
+  }
+
+  interface DockScriptRow {
+    id: string
+    resourceId: string
+    name: string
+    label: string
+    path: string
+  }
+
+  function scriptChoices(ids: string[]): DockScriptRow[] {
+    const rows = ids.flatMap((id) => {
+      const instance = engine.componentInstances.get(id)
+      const resource = instance ? engine.components.get(instance.resourceId) : undefined
+      if (!instance || !resource) return []
+      return [{
+        id,
+        resourceId: resource.id,
+        name: resource.name,
+        path: `res://components/${resource.name}.ts`,
+      }]
+    })
+    const counts = new Map<string, number>()
+    for (const row of rows) counts.set(row.name, (counts.get(row.name) ?? 0) + 1)
+    const seen = new Map<string, number>()
+    return rows.map((row) => {
+      const total = counts.get(row.name) ?? 1
+      if (total < 2) return { ...row, label: row.name }
+      const index = (seen.get(row.name) ?? 0) + 1
+      seen.set(row.name, index)
+      return { ...row, label: `${row.name} ${index}` }
+    })
+  }
+
+  const dockScriptRows = computed(() => {
+    const node = selectedId.value ? nodeById.value.get(selectedId.value) : undefined
+    return scriptChoices(node?.componentIds ?? [])
+  })
+
+  const dockDirty = computed(() => {
+    void revision.value
+    const resourceId = dockResourceId.value
+    if (!resourceId) return false
+    const saved = engine.components.get(resourceId)?.source
+    if (saved === undefined) return false
+    const source = resourceId === activeScriptId.value ? scriptSource.value : dockSource.value
+    return source !== saved
+  })
+
+  function rememberDockBuffer(): void {
+    const resourceId = dockResourceId.value
+    if (!resourceId || resourceId === activeScriptId.value) return
+    const saved = engine.components.get(resourceId)?.source
+    if (saved === undefined) {
+      dropScriptDraft(resourceId)
+      return
+    }
+    if (dockSource.value === saved) dropScriptDraft(resourceId)
+    else scriptDrafts.value = { ...scriptDrafts.value, [resourceId]: dockSource.value }
+  }
+
+  function loadDockSource(): void {
+    const resourceId = dockResourceId.value
+    if (!resourceId || resourceId === activeScriptId.value) return
+    const draft = Object.hasOwn(scriptDrafts.value, resourceId) ? scriptDrafts.value[resourceId] : undefined
+    dockSource.value = draft ?? engine.components.get(resourceId)?.source ?? ''
+  }
+
+  function refreshDockSource(): void {
+    const resourceId = dockResourceId.value
+    if (!resourceId || resourceId === activeScriptId.value) return
+    if (Object.hasOwn(scriptDrafts.value, resourceId)) {
+      const draft = scriptDrafts.value[resourceId] ?? ''
+      if (dockSource.value !== draft) dockSource.value = draft
+      return
+    }
+    const saved = engine.components.get(resourceId)?.source ?? ''
+    if (dockSource.value !== saved) dockSource.value = saved
+  }
+
+  function assignDock(instanceId: string | null): void {
+    const instance = instanceId ? engine.componentInstances.get(instanceId) : undefined
+    const resourceId = instance?.resourceId ?? null
+    const resolvedId = instance ? instanceId : null
+    if (resolvedId === dockInstanceId.value && resourceId === dockResourceId.value) {
+      refreshDockSource()
+      return
+    }
+    rememberDockBuffer()
+    dockInstanceId.value = resolvedId
+    dockResourceId.value = resourceId
+    loadDockSource()
+    window.clearTimeout(dockStatusTimer)
+    dockStatus.value = ''
+    dockError.value = false
+  }
+
+  function syncDockFromSelection(): void {
+    const node = engine.selectedId ? engine.nodes.get(engine.selectedId) : undefined
+    const ids = node?.componentIds ?? []
+    let next: string | null = null
+    if (pinnedDockId && ids.includes(pinnedDockId)) next = pinnedDockId
+    else if (selectedComponentId.value && ids.includes(selectedComponentId.value)) next = selectedComponentId.value
+    else if (dockInstanceId.value && ids.includes(dockInstanceId.value)) next = dockInstanceId.value
+    else next = ids[0] ?? null
+    pinnedDockId = null
+    assignDock(next)
+  }
+
+  function showDockScript(instanceId: string): void {
+    const instance = engine.componentInstances.get(instanceId)
+    if (!instance || instance.nodeId !== engine.selectedId) return
+    pinnedDockId = instanceId
+    touch()
+  }
+
+  function focusNodeScript(nodeId: string, instanceId: string): void {
+    const node = engine.nodes.get(nodeId)
+    if (!node || !node.componentIds.includes(instanceId)) return
+    selectedComponentId.value = null
+    pinnedDockId = instanceId
+    if (engine.selectedId !== nodeId || engine.selectedIds.length !== 1) engine.select(nodeId)
+    touch()
+  }
+
+  function openNodeScript(nodeId: string, x: number, y: number): void {
+    const node = engine.nodes.get(nodeId)
+    if (!node || node.componentIds.length === 0) return
+    const first = node.componentIds[0]
+    if (node.componentIds.length === 1 && first) {
+      focusNodeScript(nodeId, first)
+      return
+    }
+    if (engine.selectedId !== nodeId || engine.selectedIds.length !== 1) {
+      selectedComponentId.value = null
+      pinnedDockId = first ?? null
+      engine.select(nodeId)
+      touch()
+    }
+    const items: MenuItem[] = scriptChoices(node.componentIds).map((row) => ({
+      label: row.label,
+      icon: 'script',
+      iconClass: 'component',
+      title: row.path,
+      action: () => focusNodeScript(nodeId, row.id),
+    }))
+    showPopup(new DOMRect(x, y, 0, 0), items, false)
+  }
+
+  function attachScript(resourceId: string, nodeId?: string): void {
+    const target = nodeId ?? engine.selectedId
+    if (!target) return
+    const before = engine.nodes.get(target)?.componentIds.length ?? 0
+    attachComponent(resourceId, target)
+    const ids = engine.nodes.get(target)?.componentIds ?? []
+    if (ids.length === before) return
+    selectedComponentId.value = null
+    pinnedDockId = ids.at(-1) ?? null
+    touch()
+  }
+
+  function detachDockScript(): void {
+    const instanceId = dockInstanceId.value
+    if (!instanceId) return
+    removeComponent(instanceId)
+  }
+
+  function openScriptSlotMenu(anchor: HTMLElement): void {
+    const nodeId = engine.selectedId
+    const node = nodeId ? engine.nodes.get(nodeId) : undefined
+    if (!node) return
+    const rows = scriptChoices(node.componentIds)
+    const items: MenuItem[] = []
+    if (rows.length > 1) {
+      for (const row of rows) {
+        items.push({
+          label: row.label,
+          icon: 'script',
+          iconClass: 'component',
+          title: row.path,
+          action: () => showDockScript(row.id),
+        })
+      }
+      items.push({ separator: true, label: '', action: () => {} })
+    }
+    items.push({ label: 'Attach Script…', action: () => openComponentDialog() })
+    for (const file of componentFiles.value) {
+      items.push({
+        label: `Attach ${file.name}`,
+        icon: 'component',
+        iconClass: 'component',
+        title: file.path,
+        action: () => attachScript(file.id, node.id),
+      })
+    }
+    const current = dockInstanceId.value
+    items.push(
+      { separator: true, label: '', action: () => {} },
+      { label: 'Edit', disabled: !current, action: () => { if (current) editComponent(current) } },
+      { label: 'Detach Script', disabled: !current, action: () => detachDockScript() },
+    )
+    showPopup(anchor.getBoundingClientRect(), items, false)
+  }
+
+  function saveDockScript(): void {
+    const resourceId = dockResourceId.value
+    const instanceId = dockInstanceId.value
+    if (!resourceId || !instanceId || !engine.componentInstances.has(instanceId)) return
+    if (resourceId === activeScriptId.value) {
+      saveActiveScript(true)
+      return
+    }
+    window.clearTimeout(dockStatusTimer)
+    const error = engine.updateComponentSource(resourceId, dockSource.value)
+    dockStatus.value = error ?? 'Applied'
+    dockError.value = Boolean(error)
+    dockStatusKey.value += 1
+    if (error) {
+      bottomTab.value = 'output'
+    } else {
+      dropScriptDraft(resourceId)
+      dockStatusTimer = window.setTimeout(() => {
+        if (dockStatus.value === 'Applied') dockStatus.value = ''
+      }, 1400)
+    }
+    touch()
+  }
+
+  function onDockScriptChange(source: string): void {
+    const resourceId = dockResourceId.value
+    if (!resourceId) return
+    if (resourceId === activeScriptId.value) {
+      onScriptChange(source)
+      return
+    }
+    dockSource.value = source
+    const saved = engine.components.get(resourceId)?.source ?? ''
+    if (source === saved) dropScriptDraft(resourceId)
+    else scriptDrafts.value = { ...scriptDrafts.value, [resourceId]: source }
+    if (dockStatus.value) {
+      window.clearTimeout(dockStatusTimer)
+      dockStatus.value = ''
+      dockError.value = false
+    }
+  }
+
+  function dropOnScriptDock(data: string): void {
+    const nodeId = engine.selectedId
+    if (!nodeId) return
+    if (data.startsWith(COMPONENT_DRAG_PREFIX)) {
+      attachScript(data.slice(COMPONENT_DRAG_PREFIX.length), nodeId)
+      return
+    }
+    if (!data.startsWith(INSTANCE_DRAG_PREFIX)) return
+    const instanceId = data.slice(INSTANCE_DRAG_PREFIX.length)
+    const instance = engine.componentInstances.get(instanceId)
+    if (!instance) return
+    if (instance.nodeId === nodeId) {
+      showDockScript(instanceId)
+      return
+    }
+    moveComponent(instanceId, nodeId)
+    if (engine.componentInstances.get(instanceId)?.nodeId !== nodeId) return
+    selectedComponentId.value = null
+    pinnedDockId = instanceId
+    touch()
   }
 
   function createFromDraft(draft: CreateDraft): string | null {
@@ -2026,8 +2303,10 @@ export const useEditorStore = defineStore('editor', () => {
     ]
     if (node.instancePath) items.push({ label: 'Make Local', action: () => makeLocal(id) })
     const groupLocked = engine.selectionRoots(engine.selectedIds).length === 0
+    const firstScript = node.componentIds[0]
     items.push(
       { label: 'Add Component…', action: () => openComponentDialog() },
+      ...(firstScript ? [{ label: 'Open Script', action: () => focusNodeScript(id, firstScript) }] : []),
       { label: 'Rename', disabled: node.isRoot, action: () => beginRename(id) },
       { label: 'Duplicate', disabled: groupLocked, action: () => duplicateSelection() },
       { label: 'Delete', disabled: groupLocked, action: () => deleteSelection() },
@@ -2277,6 +2556,14 @@ export const useEditorStore = defineStore('editor', () => {
     scriptStatusKey,
     scriptError,
     scriptDirty,
+    dockInstanceId,
+    dockResourceId,
+    dockSource,
+    dockStatus,
+    dockStatusKey,
+    dockError,
+    dockDirty,
+    dockScriptRows,
     helpTopic,
     popup,
     openMenuName,
@@ -2417,6 +2704,13 @@ export const useEditorStore = defineStore('editor', () => {
     closeScript,
     saveActiveScript,
     onScriptChange,
+    showDockScript,
+    openNodeScript,
+    openScriptSlotMenu,
+    saveDockScript,
+    onDockScriptChange,
+    detachDockScript,
+    dropOnScriptDock,
     openHelp,
     closeHelp,
     selectMaterialFile,

@@ -7,6 +7,22 @@ import spinSource from '../webgl/behaviors/Spin.ts?raw'
 export const COMPONENT_DRAG_PREFIX = 'component:'
 export const INSTANCE_DRAG_PREFIX = 'instance:'
 
+/** Set during a component-file or component-instance drag so a dock can accept it before drop. */
+export const SCRIPT_DRAG_TYPE = 'text/x-script'
+
+export function markScriptDrag(transfer: DataTransfer, payload: string): void {
+  transfer.setData('text/plain', payload)
+  try {
+    transfer.setData(SCRIPT_DRAG_TYPE, payload)
+  } catch {
+    // text/plain still carries the payload when a custom type is refused.
+  }
+}
+
+export function isScriptDrag(transfer: DataTransfer | null): boolean {
+  return !!transfer && [...transfer.types].includes(SCRIPT_DRAG_TYPE)
+}
+
 const LIFECYCLE = [
   'onAwake',
   'onStart',
