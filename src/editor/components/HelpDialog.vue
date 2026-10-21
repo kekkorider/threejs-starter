@@ -23,7 +23,8 @@ F        Focus selection
 Shift+click  Add to the selection
 Ctrl+click   Toggle a node in the selection
 Box drag     Select mode: drag a rectangle. Shift adds, Ctrl removes
-Right-drag   Orbit while Select is active
+Right-drag   Orbit while Select or List is active
+Alt+right-click  List nodes under the cursor
 Q W E R  Select, move, rotate, scale
 Y        Toggle snap
 F5       Play
