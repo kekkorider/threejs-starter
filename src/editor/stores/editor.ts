@@ -3,6 +3,14 @@ import { computed, markRaw, ref, shallowRef } from 'vue'
 import * as THREE from 'three/webgpu'
 import { ThreeContextEvents } from 'three-start'
 import type { ThreeStart } from 'three-start'
+import {
+  cameraFieldLabel,
+  type CameraFlagField,
+  type CameraInspector,
+  type CameraNumberField,
+  type CameraProjection,
+  type CameraResetField,
+} from '../camera'
 import { GEOMETRY_CATALOG, triangleCount, type GeometryType } from '../geometry'
 import type { NodeKind, ToolMode } from '../state'
 import { EditorState, NODE_TYPES, type EditorNode, type GridSettings, type LogLine, type SceneSettings, type ShadowTypeName } from '../state'
@@ -103,6 +111,7 @@ export interface InspectorView {
     aimable: boolean
     lookAt: { enabled: boolean, x: number, y: number, z: number } | null
   } | null
+  camera: CameraInspector | null
 }
 
 export interface CreateDraft {
@@ -117,6 +126,15 @@ export interface CreateDraft {
   range: number
   angle: number
   penumbra: number
+  projection: CameraProjection
+  fov: number
+  near: number
+  far: number
+  zoom: number
+  left: number
+  right: number
+  top: number
+  bottom: number
 }
 
 export interface PopupState {
@@ -410,6 +428,7 @@ export const useEditorStore = defineStore('editor', () => {
           }
         : null,
       light,
+      camera: engine.cameraInspector(node),
     }
   }
 
@@ -1082,6 +1101,35 @@ export const useEditorStore = defineStore('editor', () => {
     }, { merge: false })
   }
 
+  function setCameraProjection(id: string, projection: CameraProjection): void {
+    record(`Projection ${nodeLabel(id)}`, () => {
+      engine.setCameraProjection(id, projection)
+    }, { merge: false })
+  }
+
+  function setCameraNumber(id: string, field: CameraNumberField, value: number): void {
+    record(`${cameraFieldLabel(field)} ${nodeLabel(id)}`, () => {
+      engine.setCameraNumber(id, field, value)
+    })
+  }
+
+  function setCameraFlag(id: string, field: CameraFlagField, value: boolean): void {
+    record(`${cameraFieldLabel(field)} ${nodeLabel(id)}`, () => {
+      engine.setCameraFlag(id, field, value)
+    }, { merge: false })
+  }
+
+  function resetCamera(id: string, field: CameraResetField): void {
+    record(`Reset ${cameraFieldLabel(field)} ${nodeLabel(id)}`, () => {
+      engine.resetCamera(id, field)
+    }, { merge: false })
+  }
+
+  function setCameraPreview(id: string, enabled: boolean): void {
+    engine.setCameraPreview(id, enabled)
+    touch()
+  }
+
   function resetLight(id: string, field: 'color' | 'ground' | 'intensity' | 'range' | 'angle' | 'penumbra'): void {
     record(`Reset ${field} ${nodeLabel(id)}`, () => {
       engine.resetLight(id, field)
@@ -1579,6 +1627,20 @@ export const useEditorStore = defineStore('editor', () => {
             source: draft.source,
             flags: { ...DEFAULT_FLAGS },
           })
+        } else if (draft.kind === 'Camera3D') {
+          engine.createCamera({
+            name: draft.name,
+            parentId,
+            projection: draft.projection,
+            fov: draft.fov,
+            near: draft.near,
+            far: draft.far,
+            zoom: draft.zoom,
+            left: draft.left,
+            right: draft.right,
+            top: draft.top,
+            bottom: draft.bottom,
+          })
         } else {
           engine.createLight({
             kind: draft.kind,
@@ -2050,6 +2112,11 @@ export const useEditorStore = defineStore('editor', () => {
     setLightRange,
     setSpotAngle,
     setSpotPenumbra,
+    setCameraProjection,
+    setCameraNumber,
+    setCameraFlag,
+    resetCamera,
+    setCameraPreview,
     readLookAt,
     setLookAtEnabled,
     setLookAt,

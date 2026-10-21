@@ -24,6 +24,24 @@ import {
   type GeometryType,
 } from './geometry'
 import { fingerprint } from './history'
+import {
+  applyCameraSettings,
+  copyCameraSettings,
+  createCameraObject,
+  defaultCameraSettings,
+  inspectCamera,
+  readCameraSettings,
+  resetCameraField,
+  writeCameraFlag,
+  writeCameraNumber,
+  type CameraFlagField,
+  type CameraInspector,
+  type CameraNumberField,
+  type CameraProjection,
+  type CameraResetField,
+  type CameraSettings,
+} from './camera'
+import { attachCameraIcon, disposeCameraIcon } from './cameraIcons'
 import { attachLightArrow, attachLightIcon, disposeLightArrow, disposeLightIcon, type LightIconKind } from './lightIcons'
 import {
   hasSceneFile,
@@ -53,6 +71,7 @@ import {
 export type NodeKind =
   | 'Node3D'
   | 'MeshInstance3D'
+  | 'Camera3D'
   | 'DirectionalLight3D'
   | 'OmniLight3D'
   | 'SpotLight3D'
@@ -76,6 +95,7 @@ export interface NodeDefaults {
   castShadow: boolean | null
   receiveShadow: boolean | null
   light: LightDefaults | null
+  camera: CameraSettings | null
 }
 
 export interface LightDefaults {
@@ -161,6 +181,20 @@ export interface CreateMeshOptions {
   flags: MaterialFlags
 }
 
+export interface CreateCameraOptions {
+  name?: string
+  parentId?: string | null
+  projection: CameraProjection
+  fov?: number
+  near?: number
+  far?: number
+  zoom?: number
+  left?: number
+  right?: number
+  top?: number
+  bottom?: number
+}
+
 export interface CreateLightOptions {
   kind: 'DirectionalLight3D' | 'OmniLight3D' | 'SpotLight3D' | 'HemisphereLight3D'
   name?: string
@@ -176,6 +210,7 @@ export interface CreateLightOptions {
 const NODE_LABEL: Record<NodeKind, string> = {
   Node3D: 'Node',
   MeshInstance3D: 'MeshInstance',
+  Camera3D: 'Camera',
   DirectionalLight3D: 'DirectionalLight',
   OmniLight3D: 'OmniLight',
   SpotLight3D: 'SpotLight',
@@ -261,7 +296,13 @@ export class EditorState {
   /** Save and load mutate the tree without counting as a new edit. */
   private restoring = false
   private scene: THREE.Scene | null = null
-  private camera: THREE.PerspectiveCamera | null = null
+  /** Camera the viewport is rendering with. The editor camera, unless previewing or playing a scene camera. */
+  private camera: THREE.PerspectiveCamera | THREE.OrthographicCamera | null = null
+  /** Orbit camera. Scene cameras never replace this object. */
+  private editorCamera: THREE.PerspectiveCamera | null = null
+  /** Scene camera the viewport looks through while editing. Not saved. */
+  private previewCameraId: string | null = null
+  private cameraHelpers = new Map<string, THREE.CameraHelper>()
   private grid: THREE.GridHelper | null = null
   private selectionHelper: THREE.Box3Helper | null = null
   private selectionBounds = new THREE.Box3()
@@ -303,6 +344,7 @@ export class EditorState {
     this.starter = starter
     const { scene, camera, renderer } = starter.ctx
     this.scene = scene
+    this.editorCamera = camera
     this.camera = camera
     scene.background = new THREE.Color(0x3a3a3a)
 
@@ -346,10 +388,10 @@ export class EditorState {
       orbit().enabled = false
     })
     this.controls.addEventListener('mouseUp', () => {
-      orbit().enabled = true
+      orbit().enabled = this.orbitAllowed()
     })
     window.addEventListener('pointerup', () => {
-      orbit().enabled = true
+      orbit().enabled = this.orbitAllowed()
     })
 
     this.installEnvironment(renderer)
@@ -523,6 +565,9 @@ export class EditorState {
   /** Hide the grid, gizmo, and selection box when the editor route is not showing. */
   setChromeVisible(visible: boolean): void {
     this.chromeVisible = visible
+    if (!visible) this.previewCameraId = null
+    this.syncViewCamera()
+    this.updateCameras()
     this.applyGridVisibility()
     this.updateLightIcons()
     if (!this.controls) return
@@ -687,6 +732,8 @@ export class EditorState {
 
   setPlaying(playing: boolean): void {
     this.playing = playing
+    this.syncViewCamera()
+    this.updateCameras()
     this.applyGridVisibility()
     this.updateLightIcons()
     if (playing) this.controls?.detach()
@@ -707,8 +754,12 @@ export class EditorState {
   }
 
   focusSelected(): void {
+    if (this.previewCameraId) {
+      this.previewCameraId = null
+      this.syncViewCamera()
+    }
     const node = this.selected()
-    const camera = this.camera
+    const camera = this.editorCamera
     const orbit = this.starter?.ctx.modules.orbitControls.controls
     if (!node || !camera || !orbit || node.isRoot) return
 
@@ -727,7 +778,11 @@ export class EditorState {
   }
 
   setView(which: 'persp' | 'top' | 'front' | 'right'): void {
-    const camera = this.camera
+    if (this.previewCameraId) {
+      this.previewCameraId = null
+      this.syncViewCamera()
+    }
+    const camera = this.editorCamera
     const orbit = this.starter?.ctx.modules.orbitControls.controls
     if (!camera || !orbit) return
     const target = orbit.target
@@ -813,11 +868,104 @@ export class EditorState {
     return node
   }
 
+  createCamera(options: CreateCameraOptions): EditorNode {
+    const parent = this.parentOrSelected(options.parentId)
+    const settings = defaultCameraSettings()
+    settings.projection = options.projection
+    if (options.fov !== undefined) settings.fov = options.fov
+    if (options.near !== undefined) settings.near = options.near
+    if (options.far !== undefined) settings.far = options.far
+    if (options.zoom !== undefined) settings.zoom = options.zoom
+    if (options.left !== undefined) settings.left = options.left
+    if (options.right !== undefined) settings.right = options.right
+    if (options.top !== undefined) settings.top = options.top
+    if (options.bottom !== undefined) settings.bottom = options.bottom
+    if (settings.right <= settings.left) settings.right = settings.left + 0.001
+    if (settings.top <= settings.bottom) settings.top = settings.bottom + 0.001
+    if (settings.projection === 'perspective' && settings.near < 0.001) settings.near = 0.001
+    if (settings.far <= settings.near) settings.far = settings.near + 0.001
+    settings.zoom = Math.max(settings.zoom, 0.001)
+    settings.fov = Math.min(179, Math.max(1, settings.fov))
+    if (settings.projection === 'perspective') settings.aspect = this.viewportAspect()
+    else settings.aspect = (settings.right - settings.left) / (settings.top - settings.bottom)
+
+    const camera = createCameraObject(settings)
+    camera.name = this.uniqueName(options.name?.trim() || 'Camera')
+    camera.userData.camera = settings
+    camera.position.set(3.4, 2.4, 5.2)
+    parent.object.add(camera)
+    camera.lookAt(0, Math.max(this.groundY, 0), 0)
+    const node = this.addNode(camera, parent.id, 'Camera3D', false)
+    this.log(`Added ${camera.name}`)
+    this.select(node.id)
+    return node
+  }
+
+  cameraInspector(node: EditorNode): CameraInspector | null {
+    if (node.kind !== 'Camera3D') return null
+    const settings = readCameraSettings(node.object)
+    if (!settings) return null
+    return inspectCamera(settings, this.previewCameraId === node.id)
+  }
+
+  setCameraProjection(id: string, projection: CameraProjection): void {
+    const node = this.nodes.get(id)
+    const settings = node ? readCameraSettings(node.object) : null
+    if (!node || !settings || settings.projection === projection) return
+    settings.projection = projection
+    if (projection === 'perspective' && settings.near < 0.001) settings.near = 0.001
+    this.ensureCameraClass(node)
+    this.applyNodeCamera(node)
+    this.touchScene()
+  }
+
+  setCameraNumber(id: string, field: CameraNumberField, value: number): void {
+    const node = this.nodes.get(id)
+    const settings = node ? readCameraSettings(node.object) : null
+    if (!node || !settings) return
+    writeCameraNumber(settings, field, value)
+    this.applyNodeCamera(node)
+    this.touchScene()
+  }
+
+  setCameraFlag(id: string, field: CameraFlagField, value: boolean): void {
+    const node = this.nodes.get(id)
+    const settings = node ? readCameraSettings(node.object) : null
+    if (!node || !settings) return
+    writeCameraFlag(settings, field, value)
+    if (field === 'current' && value) this.enforceSingleCurrent(node.id)
+    this.applyNodeCamera(node)
+    if (this.playing) this.syncViewCamera()
+    this.touchScene()
+  }
+
+  resetCamera(id: string, field: CameraResetField): void {
+    const node = this.nodes.get(id)
+    const settings = node ? readCameraSettings(node.object) : null
+    const defaults = node?.defaults.camera
+    if (!node || !settings || !defaults) return
+    resetCameraField(settings, defaults, field)
+    if (field === 'current' && settings.current) this.enforceSingleCurrent(node.id)
+    this.ensureCameraClass(node)
+    this.applyNodeCamera(node)
+    if (this.playing) this.syncViewCamera()
+    this.touchScene()
+  }
+
+  /** Look through a scene camera in the editor. Uncheck to return to the orbit camera. */
+  setCameraPreview(id: string | null, enabled = true): void {
+    const valid = Boolean(enabled && id && this.nodes.get(id)?.kind === 'Camera3D')
+    this.previewCameraId = valid ? id : null
+    this.syncViewCamera()
+    this.updateCameras()
+  }
+
   duplicate(id: string): EditorNode | null {
     const node = this.nodes.get(id)
     if (!node || node.isRoot || !node.parentId) return null
     const copy = this.cloneNode(node, node.parentId, node.instanceOwnerId)
     if ((copy.object as THREE.Mesh).isMesh) copy.object.position.x += 0.45
+    this.clearDuplicatedCurrent(copy)
     this.captureDefaults(copy)
     this.log(`Duplicated ${node.name} as ${copy.name}`)
     this.select(copy.id)
@@ -828,6 +976,8 @@ export class EditorState {
     const node = this.nodes.get(id)
     if (!node || node.isRoot) return
     const ids = this.collectIds(node)
+    if (this.previewCameraId && ids.includes(this.previewCameraId)) this.previewCameraId = null
+    this.releaseCameras(node.object)
     this.releaseLights(node.object)
     for (const childId of ids) this.forgetNodeComponents(childId)
     destroy(node.object)
@@ -836,6 +986,7 @@ export class EditorState {
     if (parent) parent.childIds = parent.childIds.filter((childId) => childId !== id)
     this.dropOrphanResources()
     if (this.selectedId && !this.nodes.has(this.selectedId)) this.select(parent?.id ?? this.rootId)
+    this.syncViewCamera()
     if (!quiet) this.log(`Removed ${node.name}`)
     this.touchScene()
   }
@@ -1406,7 +1557,7 @@ export class EditorState {
     const targets: THREE.Object3D[] = []
     for (const node of this.nodes.values()) {
       if (node.object instanceof THREE.Mesh && node.object.visible) targets.push(node.object)
-      const icon = node.object.getObjectByName('LightIcon')
+      const icon = node.object.getObjectByName('LightIcon') ?? node.object.getObjectByName('CameraIcon')
       if (icon?.visible) targets.push(icon)
     }
     const hits = raycaster.intersectObjects(targets, true)
@@ -1564,6 +1715,7 @@ export class EditorState {
         geometryId: geometryIdFor(node),
         materialId: materialIdFor(node),
         light: lightDefaultsFrom(node.object),
+        camera: this.cameraRecord(node),
         components: this.componentRecords(node),
         instance: node.instancePath,
       })
@@ -1594,6 +1746,7 @@ export class EditorState {
     this.restoring = true
     try {
       this.controls?.detach()
+      this.previewCameraId = null
       if (this.playing) this.setPlaying(false)
       for (const childId of [...root.childIds]) this.deleteNode(childId, true)
       for (const instanceId of [...root.componentIds]) {
@@ -1650,6 +1803,8 @@ export class EditorState {
         const created = this.spawnRecord(record, parentRuntime, geoMap, matMap, new Set(), preserveNames)
         runtime.set(record.id, created.id)
       }
+      this.enforceSingleCurrent()
+      this.syncViewCamera()
       this.select(this.rootId)
       this.sceneDirty = false
     } finally {
@@ -1709,6 +1864,10 @@ export class EditorState {
         record.light?.ground ?? '#3c342c',
         record.light?.intensity ?? 0.45,
       )
+    } else if (record.kind === 'Camera3D') {
+      const settings = record.camera ? copyCameraSettings(record.camera) : defaultCameraSettings()
+      object = createCameraObject(settings)
+      object.userData.camera = settings
     } else {
       object = new THREE.Group()
     }
@@ -1877,6 +2036,8 @@ export class EditorState {
     for (const node of this.nodes.values()) {
       if (node.kind === 'DirectionalLight3D' || node.kind === 'SpotLight3D') this.aimLight(node.object)
     }
+    this.syncViewCamera()
+    this.updateCameras()
     if (this.playing || !this.chromeVisible) return
     this.updateSelectionBox()
     this.updateLightIcons()
@@ -2293,6 +2454,7 @@ export class EditorState {
     this.nodes.set(id, node)
     this.nodes.get(parentId)?.childIds.push(id)
     this.attachIcon(node)
+    if (kind === 'Camera3D') this.attachCameraChrome(node)
     this.captureDefaults(node)
     this.touchScene()
     return node
@@ -2373,25 +2535,27 @@ export class EditorState {
     const camera = this.camera
     const visible = this.chromeVisible && !this.playing
     const height = this.starter?.ctx.renderer.domElement.clientHeight || 800
-    const fov = camera ? THREE.MathUtils.degToRad(camera.fov) : 1
+    const fov = camera instanceof THREE.PerspectiveCamera ? THREE.MathUtils.degToRad(camera.fov) : 1
     for (const node of this.nodes.values()) {
       const show = visible && node.object.visible
       const arrow = node.object.getObjectByName('LightArrow')
       if (arrow) arrow.visible = show
-      const icon = node.object.getObjectByName('LightIcon')
+      const icon = node.object.getObjectByName('LightIcon') ?? node.object.getObjectByName('CameraIcon')
       if (!icon) continue
-      icon.visible = show
+      icon.visible = show && this.activeCameraId() !== node.id
       if (!icon.visible || !camera) continue
       node.object.getWorldPosition(this.tmp)
       const distance = Math.max(camera.position.distanceTo(this.tmp), 0.5)
-      const world = 2 * Math.tan(fov / 2) * distance * (64 / Math.max(height, 1))
+      const world = camera instanceof THREE.OrthographicCamera
+        ? (Math.abs(camera.top - camera.bottom) / Math.max(camera.zoom, 0.001)) * (64 / Math.max(height, 1))
+        : 2 * Math.tan(fov / 2) * distance * (64 / Math.max(height, 1))
       icon.scale.set(world, world, 1)
     }
   }
 
   private measureBounds(object: THREE.Object3D, target: THREE.Box3): THREE.Box3 {
     const hidden: { object: THREE.Object3D, visible: boolean }[] = []
-    for (const name of ['LightIcon', 'LightArrow']) {
+    for (const name of ['LightIcon', 'LightArrow', 'CameraIcon']) {
       const child = object.getObjectByName(name)
       if (!child) continue
       hidden.push({ object: child, visible: child.visible })
@@ -2437,6 +2601,7 @@ export class EditorState {
       castShadow: cast,
       receiveShadow: object instanceof THREE.Mesh ? object.receiveShadow : null,
       light: lightDefaultsFrom(object),
+      camera: copyStoredCamera(object),
     }
   }
 
@@ -2446,6 +2611,211 @@ export class EditorState {
     const created: LookAtConfig = { enabled: false, x: 0, y: 0, z: 0 }
     light.userData.lookAt = created
     return created
+  }
+
+  private attachCameraChrome(node: EditorNode): void {
+    const settings = readCameraSettings(node.object) ?? defaultCameraSettings()
+    node.object.userData.camera = settings
+    attachCameraIcon(node.object)
+    this.rebuildCameraHelper(node)
+    this.applyNodeCamera(node)
+  }
+
+  private rebuildCameraHelper(node: EditorNode): void {
+    this.disposeCameraHelper(node.id)
+    if (!(node.object instanceof THREE.Camera) || !this.scene) return
+    const helper = new THREE.CameraHelper(node.object)
+    helper.setColors(
+      new THREE.Color('#6ec8e0'),
+      new THREE.Color('#9fd8ea'),
+      new THREE.Color('#7dce7a'),
+      new THREE.Color('#f0d264'),
+      new THREE.Color('#d0d0d0'),
+    )
+    helper.userData.editorHidden = true
+    helper.name = 'CameraHelper'
+    helper.frustumCulled = false
+    helper.raycast = () => {}
+    this.scene.add(helper)
+    this.cameraHelpers.set(node.id, helper)
+    helper.update()
+  }
+
+  private disposeCameraHelper(id: string): void {
+    const helper = this.cameraHelpers.get(id)
+    if (!helper) return
+    helper.geometry.dispose()
+    const material = helper.material
+    if (!Array.isArray(material)) material.dispose()
+    helper.removeFromParent()
+    this.cameraHelpers.delete(id)
+  }
+
+  private releaseCameras(object: THREE.Object3D): void {
+    object.traverse((child) => {
+      const id = child.userData.editorId as string | undefined
+      if (id) this.disposeCameraHelper(id)
+      disposeCameraIcon(child)
+    })
+  }
+
+  private updateCameras(): void {
+    const aspect = this.viewportAspect()
+    const viewing = this.activeCameraId()
+    for (const node of this.nodes.values()) {
+      if (node.kind !== 'Camera3D') continue
+      this.applyNodeCamera(node, aspect, viewing === node.id)
+      const helper = this.cameraHelpers.get(node.id)
+      if (!helper) continue
+      const show = this.chromeVisible && !this.playing && node.object.visible && viewing !== node.id
+      helper.visible = show
+      if (show) helper.update()
+    }
+  }
+
+  private applyNodeCamera(node: EditorNode, aspect = this.viewportAspect(), viewing = this.activeCameraId() === node.id): void {
+    const settings = readCameraSettings(node.object)
+    if (!settings) return
+    if (!(node.object instanceof THREE.PerspectiveCamera) && !(node.object instanceof THREE.OrthographicCamera)) return
+    applyCameraSettings(node.object, settings, aspect, viewing && settings.syncAspect)
+  }
+
+  private ensureCameraClass(node: EditorNode): void {
+    const settings = readCameraSettings(node.object)
+    if (!settings) return
+    const matches = settings.projection === 'orthographic'
+      ? node.object instanceof THREE.OrthographicCamera
+      : node.object instanceof THREE.PerspectiveCamera
+    if (!matches) this.replaceCameraObject(node, settings)
+  }
+
+  private replaceCameraObject(node: EditorNode, settings: CameraSettings): void {
+    const previous = node.object
+    const next = createCameraObject(settings)
+    next.name = previous.name
+    next.visible = previous.visible
+    next.position.copy(previous.position)
+    next.quaternion.copy(previous.quaternion)
+    next.scale.copy(previous.scale)
+    next.rotation.order = previous.rotation.order
+    next.userData = previous.userData
+    next.userData.camera = settings
+    const parent = previous.parent
+    const index = parent ? parent.children.indexOf(previous) : -1
+    for (const child of [...previous.children]) next.add(child)
+    if (parent) {
+      parent.remove(previous)
+      parent.add(next)
+      if (index >= 0) {
+        const children = parent.children
+        const from = children.indexOf(next)
+        if (from >= 0 && from !== index) {
+          children.splice(from, 1)
+          children.splice(Math.min(index, children.length), 0, next)
+        }
+      }
+    }
+    const wasGizmo = this.controls?.object === previous
+    node.object = next
+    this.retargetBehaviours(node)
+    this.rebuildCameraHelper(node)
+    this.applyNodeCamera(node)
+    if (wasGizmo) this.controls?.attach(next)
+    next.updateMatrixWorld(true)
+    this.syncViewCamera()
+  }
+
+  private retargetBehaviours(node: EditorNode): void {
+    for (const instanceId of [...node.componentIds]) {
+      const instance = this.componentInstances.get(instanceId)
+      const resource = instance ? this.components.get(instance.resourceId) : undefined
+      if (!instance || !resource) continue
+      const fields = parameterFields(instance.behaviour)
+      const enabled = instance.behaviour.enabled
+      destroy(instance.behaviour)
+      instance.behaviour = this.spawnBehaviour(node, resource, fields)
+      instance.name = resource.name
+      if (!enabled) instance.behaviour.disable()
+    }
+  }
+
+  private activeCameraId(): string | null {
+    if (this.playing) return this.findCurrentCameraId()
+    if (this.previewCameraId && this.nodes.get(this.previewCameraId)?.kind === 'Camera3D') return this.previewCameraId
+    return null
+  }
+
+  private findCurrentCameraId(): string | null {
+    const found: string[] = []
+    const walk = (id: string): void => {
+      const node = this.nodes.get(id)
+      if (!node) return
+      const settings = readCameraSettings(node.object)
+      if (node.kind === 'Camera3D' && settings?.current) found.push(node.id)
+      for (const childId of node.childIds) walk(childId)
+    }
+    if (this.rootId) walk(this.rootId)
+    return found.at(-1) ?? null
+  }
+
+  private enforceSingleCurrent(keepId?: string): void {
+    const keep = keepId ?? this.findCurrentCameraId()
+    for (const node of this.nodes.values()) {
+      const settings = readCameraSettings(node.object)
+      if (!settings || node.kind !== 'Camera3D') continue
+      settings.current = node.id === keep
+    }
+  }
+
+  private syncViewCamera(): void {
+    const starter = this.starter
+    const editor = this.editorCamera
+    if (!starter || !editor) return
+    const id = this.activeCameraId()
+    const node = id ? this.nodes.get(id) : undefined
+    const sceneCamera = node?.object
+    const next = sceneCamera instanceof THREE.PerspectiveCamera || sceneCamera instanceof THREE.OrthographicCamera
+      ? sceneCamera
+      : editor
+    const changed = this.camera !== next
+    if (starter.ctx.camera !== next) {
+      if (next instanceof THREE.OrthographicCamera) starter.ctx.ortho = next
+      else starter.ctx.camera = next
+    }
+    this.camera = next
+    if (this.controls && this.controls.camera !== next) this.controls.camera = next
+    if (!changed) return
+    const orbit = starter.ctx.modules.orbitControls.controls
+    if (!this.orbitAllowed()) orbit.enabled = false
+    else if (!this.controls?.dragging) orbit.enabled = true
+  }
+
+  private orbitAllowed(): boolean {
+    return this.activeCameraId() === null
+  }
+
+  private viewportAspect(): number {
+    const canvas = this.starter?.ctx.renderer.domElement
+    if (!canvas || canvas.clientHeight < 1 || canvas.clientWidth < 1) return 1
+    return canvas.clientWidth / canvas.clientHeight
+  }
+
+  private clearDuplicatedCurrent(node: EditorNode): void {
+    const settings = readCameraSettings(node.object)
+    if (settings?.current) {
+      settings.current = false
+      this.captureDefaults(node)
+    }
+    for (const childId of node.childIds) {
+      const child = this.nodes.get(childId)
+      if (child) this.clearDuplicatedCurrent(child)
+    }
+  }
+
+  private cameraRecord(node: EditorNode): CameraSettings | null {
+    if (node.kind !== 'Camera3D') return null
+    const settings = readCameraSettings(node.object)
+    return settings ? copyCameraSettings(settings) : copyCameraSettings(defaultCameraSettings())
   }
 
   private uniqueName(base: string): string {
@@ -2503,6 +2873,11 @@ function booleanFlag(object: THREE.Object3D, key: 'castShadow' | 'receiveShadow'
   return typeof value === 'boolean' ? value : false
 }
 
+function copyStoredCamera(object: THREE.Object3D): CameraSettings | null {
+  const settings = readCameraSettings(object)
+  return settings ? copyCameraSettings(settings) : null
+}
+
 function copyLookAt(value: LookAtConfig | undefined): LookAtConfig | null {
   if (!value) return null
   return { enabled: value.enabled, x: value.x, y: value.y, z: value.z }
@@ -2553,6 +2928,7 @@ function kindOf(object: THREE.Object3D): NodeKind | null {
   const tagged = object.userData.editorKind as NodeKind | undefined
   if (tagged) return tagged
   if ((object as THREE.Mesh).isMesh) return 'MeshInstance3D'
+  if ((object as THREE.Camera).isCamera && !(object as THREE.Light).isLight) return 'Camera3D'
   if ((object as THREE.DirectionalLight).isDirectionalLight) return 'DirectionalLight3D'
   if ((object as THREE.SpotLight).isSpotLight) return 'SpotLight3D'
   if ((object as THREE.HemisphereLight).isHemisphereLight) return 'HemisphereLight3D'
@@ -2575,6 +2951,13 @@ export const NODE_TYPES: { kind: NodeKind, label: string, group: string, descrip
     group: 'Mesh',
     description: 'A mesh drawn with a geometry and a TSL material.',
     inherits: 'MeshInstance < Node',
+  },
+  {
+    kind: 'Camera3D',
+    label: 'Camera',
+    group: 'Camera',
+    description: 'A viewpoint. Switch between perspective and orthographic. The inspector edits the full lens: field of view, focal length, film, frustum planes, zoom, clip distances, and view offset. Mark one camera Current to use it while playing.',
+    inherits: 'Camera < Node',
   },
   {
     kind: 'DirectionalLight3D',

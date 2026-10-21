@@ -6,6 +6,7 @@ export function icon(name: string): string {
 
 const PATHS: Record<string, string> = {
   node: `<circle cx="8" cy="8" r="2.2" fill="currentColor"/><path d="M8 1.5v3M8 11.5v3M1.5 8h3M11.5 8h3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>`,
+  camera: `<path d="M1.8 5.5h2.3l1-1.8h5.8l1 1.8h2.3v7.2H1.8V5.5Z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><circle cx="8" cy="8.8" r="2.05" fill="none" stroke="currentColor" stroke-width="1.3"/>`,
   mesh: `<path fill="currentColor" d="M8 1.4 14.2 5v6L8 14.6 1.8 11V5L8 1.4Zm0 1.7L3.4 6.1v3.8L8 13l4.6-3.1V6.1L8 3.1ZM8 6.2l3.2 1.9L8 10 4.8 8.1 8 6.2Z"/>`,
   light: `<circle cx="8" cy="8" r="2.3" fill="currentColor"/><path d="M8 1.4v2M8 12.6v2M1.4 8h2M12.6 8h2M3.2 3.2l1.4 1.4M11.4 11.4l1.4 1.4M12.8 3.2l-1.4 1.4M4.6 11.4l-1.4 1.4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>`,
   'light-dir': `<path fill="currentColor" d="M2 3.2h8.2v1.6H2z"/><path d="M3 6.2 8 13.2 13 6.2" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>`,
