@@ -267,7 +267,8 @@ export class EditorState {
   components = new Map<string, ComponentResource>()
   componentInstances = new Map<string, ComponentInstance>()
   rootId = ''
-  selectedId: string | null = null
+  /** Selected nodes, oldest first. The last id is the active node the inspector and gizmo use. */
+  selectedIds: string[] = []
   tool: ToolMode = 'translate'
   space: 'world' | 'local' = 'world'
   snap = false
@@ -304,11 +305,22 @@ export class EditorState {
   private previewCameraId: string | null = null
   private cameraHelpers = new Map<string, THREE.CameraHelper>()
   private grid: THREE.GridHelper | null = null
-  private selectionHelper: THREE.Box3Helper | null = null
-  private selectionBounds = new THREE.Box3()
+  private selectionHelpers: THREE.Box3Helper[] = []
+  private selectionBoxes: THREE.Box3[] = []
+  /** World poses captured when a gizmo drag starts, so the rest of the selection follows the active node. */
+  private selectionDrag: { id: string, world: THREE.Matrix4, position: THREE.Vector3, root: boolean }[] | null = null
   private readonly forward = new THREE.Vector3()
   private readonly tmp = new THREE.Vector3()
   private readonly tmpSize = new THREE.Vector3(0.5, 0.5, 0.5)
+  private readonly dragDelta = new THREE.Matrix4()
+  private readonly dragInverse = new THREE.Matrix4()
+  private readonly dragWorld = new THREE.Matrix4()
+  private readonly dragLocal = new THREE.Matrix4()
+  private readonly dragPos = new THREE.Vector3()
+  private readonly dragTargetPos = new THREE.Vector3()
+  private readonly marqueeBounds = new THREE.Box3()
+  private readonly marqueePoint = new THREE.Vector3()
+  private readonly marqueeView = new THREE.Vector3()
   private idCounter = 1
 
   constructor() {
@@ -372,12 +384,6 @@ export class EditorState {
     renderer.shadowMap.enabled = true
     renderer.shadowMap.type = THREE.PCFShadowMap
 
-    this.selectionHelper = new THREE.Box3Helper(this.selectionBounds, 0x569eff)
-    this.selectionHelper.userData.editorHidden = true
-    this.selectionHelper.visible = false
-    this.selectionHelper.raycast = () => {}
-    scene.add(this.selectionHelper)
-
     this.controls = new TransformControls(camera, renderer.domElement)
     this.controls.setMode('translate')
     const helper = this.controls.getHelper()
@@ -386,13 +392,20 @@ export class EditorState {
     const orbit = () => starter.ctx.modules.orbitControls.controls
     this.controls.addEventListener('mouseDown', () => {
       orbit().enabled = false
+      this.captureSelectionDrag()
+    })
+    this.controls.addEventListener('objectChange', () => {
+      this.applySelectionDrag()
     })
     this.controls.addEventListener('mouseUp', () => {
+      this.selectionDrag = null
       orbit().enabled = this.orbitAllowed()
     })
-    window.addEventListener('pointerup', () => {
+    window.addEventListener('pointerup', (event) => {
+      if (event.button === 0) this.selectionDrag = null
       orbit().enabled = this.orbitAllowed()
     })
+    this.syncOrbitMouse()
 
     this.installEnvironment(renderer)
     if (this.scene) this.scene.environmentIntensity = SCENE_DEFAULTS.environmentIntensity
@@ -573,7 +586,7 @@ export class EditorState {
     if (!this.controls) return
     if (!visible) {
       this.controls.detach()
-      if (this.selectionHelper) this.selectionHelper.visible = false
+      for (const helper of this.selectionHelpers) helper.visible = false
       return
     }
     this.syncGizmo()
@@ -699,21 +712,95 @@ export class EditorState {
     }
   }
 
+  /** The active node: the last one selected. */
+  get selectedId(): string | null {
+    return this.selectedIds.at(-1) ?? null
+  }
+
   selected(): EditorNode | null {
-    if (!this.selectedId) return null
-    return this.nodes.get(this.selectedId) ?? null
+    const id = this.selectedId
+    if (!id) return null
+    return this.nodes.get(id) ?? null
   }
 
   select(id: string | null): void {
-    if (id && !this.nodes.has(id)) id = null
-    this.selectedId = id
+    this.setSelection(id ? [id] : [])
+  }
+
+  /** Replace the selection. `activeId` becomes the node the inspector and gizmo follow. */
+  setSelection(ids: string[], activeId?: string | null): void {
+    const unique: string[] = []
+    const seen = new Set<string>()
+    for (const id of ids) {
+      if (!id || seen.has(id) || !this.nodes.has(id)) continue
+      seen.add(id)
+      unique.push(id)
+    }
+    const active = activeId && seen.has(activeId) ? activeId : unique.at(-1) ?? null
+    if (active) {
+      const index = unique.indexOf(active)
+      if (index >= 0 && index !== unique.length - 1) {
+        unique.splice(index, 1)
+        unique.push(active)
+      }
+    }
+    if (unique.length === this.selectedIds.length && unique.every((id, index) => id === this.selectedIds[index])) return
+    this.selectedIds = unique
     this.syncGizmo()
     this.updateSelectionBox()
+  }
+
+  addSelection(ids: string[], activeId?: string | null): void {
+    const active = activeId ?? ids.at(-1) ?? this.selectedId
+    this.setSelection([...this.selectedIds, ...ids], active)
+  }
+
+  removeSelection(ids: string[]): void {
+    const drop = new Set(ids)
+    this.setSelection(this.selectedIds.filter((id) => !drop.has(id)))
+  }
+
+  toggleSelected(id: string): void {
+    if (!this.nodes.has(id)) return
+    if (this.selectedIds.includes(id)) this.removeSelection([id])
+    else this.addSelection([id], id)
+  }
+
+  toggleEach(ids: string[]): void {
+    const next = new Set(this.selectedIds)
+    let active: string | null = this.selectedId
+    for (const id of ids) {
+      if (!this.nodes.has(id)) continue
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      active = id
+    }
+    const list = [...next]
+    this.setSelection(list, active && next.has(active) ? active : list.at(-1) ?? null)
+  }
+
+  /** Selected nodes that should be edited as a group. A child of another selected node is left out. */
+  selectionRoots(ids: string[]): string[] {
+    const chosen = new Set(ids)
+    return ids.filter((id) => {
+      const node = this.nodes.get(id)
+      if (!node || node.isRoot) return false
+      let parentId = node.parentId
+      while (parentId) {
+        const parent = this.nodes.get(parentId)
+        if (!parent) break
+        // The world root can sit in the selection, but it is not a transform, so it does not hide its children.
+        if (!parent.isRoot && chosen.has(parentId)) return false
+        parentId = parent.parentId
+      }
+      return true
+    })
   }
 
   setTool(tool: ToolMode): void {
     this.tool = tool
     if (this.controls && tool !== 'select') this.controls.setMode(tool)
+    this.syncOrbitMouse()
     this.syncGizmo()
     this.updateSelectionBox()
   }
@@ -758,16 +845,25 @@ export class EditorState {
       this.previewCameraId = null
       this.syncViewCamera()
     }
-    const node = this.selected()
     const camera = this.editorCamera
     const orbit = this.starter?.ctx.modules.orbitControls.controls
-    if (!node || !camera || !orbit || node.isRoot) return
+    const nodes = this.selectedIds
+      .map((id) => this.nodes.get(id))
+      .filter((node): node is EditorNode => Boolean(node && !node.isRoot))
+    if (!nodes.length || !camera || !orbit) return
 
-    const bounds = this.measureBounds(node.object, new THREE.Box3())
-    const center = bounds.isEmpty()
-      ? node.object.getWorldPosition(new THREE.Vector3())
-      : bounds.getCenter(new THREE.Vector3())
-    const size = bounds.isEmpty() ? 1.5 : Math.max(bounds.getSize(new THREE.Vector3()).length(), 0.8)
+    const bounds = new THREE.Box3()
+    const piece = new THREE.Box3()
+    for (const node of nodes) {
+      this.measureBounds(node.object, piece)
+      if (piece.isEmpty()) {
+        node.object.getWorldPosition(this.tmp)
+        piece.setFromCenterAndSize(this.tmp, this.tmpSize.set(0.45, 0.45, 0.45))
+      }
+      bounds.union(piece)
+    }
+    const center = bounds.getCenter(new THREE.Vector3())
+    const size = Math.max(bounds.getSize(new THREE.Vector3()).length(), 0.8)
     const direction = camera.position.clone().sub(center)
     if (direction.lengthSq() < 1e-6) direction.set(1, 0.6, 1)
     direction.normalize().multiplyScalar(Math.max(size * 1.8, 2.5))
@@ -961,15 +1057,19 @@ export class EditorState {
   }
 
   duplicate(id: string): EditorNode | null {
-    const node = this.nodes.get(id)
-    if (!node || node.isRoot || !node.parentId) return null
-    const copy = this.cloneNode(node, node.parentId, node.instanceOwnerId)
-    if ((copy.object as THREE.Mesh).isMesh) copy.object.position.x += 0.45
-    this.clearDuplicatedCurrent(copy)
-    this.captureDefaults(copy)
-    this.log(`Duplicated ${node.name} as ${copy.name}`)
-    this.select(copy.id)
+    const copy = this.copyNode(id)
+    if (copy) this.select(copy.id)
     return copy
+  }
+
+  duplicateMany(ids: string[]): EditorNode[] {
+    const copies: EditorNode[] = []
+    for (const id of this.selectionRoots(ids)) {
+      const copy = this.copyNode(id)
+      if (copy) copies.push(copy)
+    }
+    if (copies.length > 0) this.setSelection(copies.map((copy) => copy.id))
+    return copies
   }
 
   deleteNode(id: string, quiet = false): void {
@@ -985,10 +1085,21 @@ export class EditorState {
     const parent = node.parentId ? this.nodes.get(node.parentId) : undefined
     if (parent) parent.childIds = parent.childIds.filter((childId) => childId !== id)
     this.dropOrphanResources()
-    if (this.selectedId && !this.nodes.has(this.selectedId)) this.select(parent?.id ?? this.rootId)
+    this.pruneSelection(parent?.id ?? this.rootId)
     this.syncViewCamera()
     if (!quiet) this.log(`Removed ${node.name}`)
     this.touchScene()
+  }
+
+  deleteNodes(ids: string[]): void {
+    const roots = this.selectionRoots(ids)
+    const names = roots.flatMap((id) => {
+      const name = this.nodes.get(id)?.name
+      return name ? [name] : []
+    })
+    for (const id of roots) this.deleteNode(id, true)
+    if (names.length === 1) this.log(`Removed ${names[0]}`)
+    else if (names.length > 1) this.log(`Removed ${names.join(', ')}`)
   }
 
   createComponent(name: string, source: string): { id: string } | { error: string } {
@@ -1572,6 +1683,35 @@ export class EditorState {
     return null
   }
 
+  /**
+   * Nodes whose screen bounds meet the rectangle. Coordinates are canvas pixels, origin at the top left.
+   * Meshes use their own geometry, so a parent is not selected just because a child is inside the rectangle.
+   * Lights, cameras, and empty nodes use a point at their origin.
+   */
+  nodesInRect(x0: number, y0: number, x1: number, y1: number): string[] {
+    const canvas = this.starter?.ctx.renderer.domElement
+    const camera = this.camera
+    if (!canvas || !camera || !this.rootId) return []
+    const rect = canvas.getBoundingClientRect()
+    const width = rect.width
+    const height = rect.height
+    if (width < 1 || height < 1) return []
+    camera.updateMatrixWorld(true)
+    const left = Math.min(x0, x1)
+    const right = Math.max(x0, x1)
+    const top = Math.min(y0, y1)
+    const bottom = Math.max(y0, y1)
+    const hits: string[] = []
+    const walk = (id: string): void => {
+      const node = this.nodes.get(id)
+      if (!node) return
+      if (!node.isRoot && this.hitsMarquee(node, left, top, right, bottom, width, height)) hits.push(id)
+      for (const childId of node.childIds) walk(childId)
+    }
+    walk(this.rootId)
+    return hits
+  }
+
   private touchScene(): void {
     if (this.restoring) return
     this.sceneDirty = true
@@ -2049,7 +2189,13 @@ export class EditorState {
     if (!scene) return
     const look = object.userData.lookAt as LookAtConfig | undefined
     object.getWorldPosition(this.tmp)
-    const dragging = Boolean(this.controls?.dragging && this.tool === 'rotate' && this.selectedId === object.userData.editorId)
+    const draggedId = object.userData.editorId as string | undefined
+    const dragging = Boolean(
+      this.controls?.dragging
+      && this.tool === 'rotate'
+      && draggedId
+      && (draggedId === this.selectedId || this.selectionDrag?.some((entry) => entry.id === draggedId)),
+    )
     if (look?.enabled) {
       if (dragging) {
         const dist = Math.max(this.tmp.distanceTo(this.forward.set(look.x, look.y, look.z)), 1)
@@ -2098,19 +2244,32 @@ export class EditorState {
   }
 
   private updateSelectionBox(): void {
-    const helper = this.selectionHelper
-    if (!helper) return
-    const node = this.selected()
-    if (!node || node.isRoot || this.playing || this.tool !== 'select') {
-      helper.visible = false
+    const nodes = this.selectedIds
+      .map((id) => this.nodes.get(id))
+      .filter((node): node is EditorNode => Boolean(node && !node.isRoot))
+    const show = nodes.length > 0 && !this.playing && this.chromeVisible && (this.tool === 'select' || nodes.length > 1)
+    if (!show) {
+      for (const helper of this.selectionHelpers) helper.visible = false
       return
     }
-    this.measureBounds(node.object, this.selectionBounds)
-    if (this.selectionBounds.isEmpty()) {
-      node.object.getWorldPosition(this.tmp)
-      this.selectionBounds.setFromCenterAndSize(this.tmp, this.tmpSize.set(0.45, 0.45, 0.45))
+    this.ensureSelectionHelpers(nodes.length)
+    const active = this.selectedId
+    for (let index = 0; index < this.selectionHelpers.length; index += 1) {
+      const helper = this.selectionHelpers[index]
+      const node = nodes[index]
+      if (!node) {
+        helper.visible = false
+        continue
+      }
+      const box = this.selectionBoxes[index]
+      this.measureBounds(node.object, box)
+      if (box.isEmpty()) {
+        node.object.getWorldPosition(this.tmp)
+        box.setFromCenterAndSize(this.tmp, this.tmpSize.set(0.45, 0.45, 0.45))
+      }
+      this.paintSelectionHelper(helper, nodes.length === 1 || node.id === active)
+      helper.visible = true
     }
-    helper.visible = true
   }
 
   private applyGridVisibility(): void {
@@ -2835,6 +2994,281 @@ export class EditorState {
     let index = 2
     while (names.has(`${base}${index}`)) index += 1
     return `${base}${index}`
+  }
+
+  private copyNode(id: string): EditorNode | null {
+    const node = this.nodes.get(id)
+    if (!node || node.isRoot || !node.parentId) return null
+    const copy = this.cloneNode(node, node.parentId, node.instanceOwnerId)
+    if ((copy.object as THREE.Mesh).isMesh) copy.object.position.x += 0.45
+    this.clearDuplicatedCurrent(copy)
+    this.captureDefaults(copy)
+    this.log(`Duplicated ${node.name} as ${copy.name}`)
+    return copy
+  }
+
+  private pruneSelection(fallback: string): void {
+    const remaining = this.selectedIds.filter((id) => this.nodes.has(id))
+    if (remaining.length === this.selectedIds.length) return
+    if (remaining.length > 0) this.setSelection(remaining)
+    else this.select(this.nodes.has(fallback) ? fallback : this.rootId)
+  }
+
+  private syncOrbitMouse(): void {
+    const orbit = this.starter?.ctx.modules.orbitControls.controls
+    if (!orbit) return
+    if (this.tool === 'select') {
+      // The rectangle uses the left button. Right-drag orbits, and the wheel still zooms.
+      orbit.mouseButtons.LEFT = null
+      orbit.mouseButtons.MIDDLE = THREE.MOUSE.PAN
+      orbit.mouseButtons.RIGHT = THREE.MOUSE.ROTATE
+      return
+    }
+    orbit.mouseButtons.LEFT = THREE.MOUSE.ROTATE
+    orbit.mouseButtons.MIDDLE = THREE.MOUSE.DOLLY
+    orbit.mouseButtons.RIGHT = THREE.MOUSE.PAN
+  }
+
+  private captureSelectionDrag(): void {
+    const primaryId = this.selectedId
+    const primary = primaryId ? this.nodes.get(primaryId) : undefined
+    if (!primary || primary.isRoot || !this.scene) {
+      this.selectionDrag = null
+      return
+    }
+    const roots = this.selectionRoots(this.selectedIds)
+    const ids = new Set(roots)
+    ids.add(primary.id)
+    if (ids.size < 2) {
+      this.selectionDrag = null
+      return
+    }
+    this.scene.updateMatrixWorld(true)
+    const entries: { id: string, world: THREE.Matrix4, position: THREE.Vector3, root: boolean }[] = []
+    for (const id of ids) {
+      const node = this.nodes.get(id)
+      if (!node || node.isRoot) continue
+      const world = node.object.matrixWorld.clone()
+      entries.push({
+        id,
+        world,
+        position: new THREE.Vector3().setFromMatrixPosition(world),
+        root: roots.includes(id),
+      })
+    }
+    this.selectionDrag = entries.length > 1 ? entries : null
+  }
+
+  private applySelectionDrag(): void {
+    const drag = this.selectionDrag
+    const primaryId = this.selectedId
+    if (!drag || !primaryId) return
+    const primary = this.nodes.get(primaryId)
+    const start = drag.find((entry) => entry.id === primaryId)
+    if (!primary || !start) return
+    if (this.tool === 'translate') this.applyTranslationDrag(primary.object, start, drag)
+    else this.applyMatrixDrag(primary.object, start, drag)
+  }
+
+  private applyTranslationDrag(
+    primary: THREE.Object3D,
+    start: { id: string, position: THREE.Vector3, root: boolean },
+    drag: { id: string, position: THREE.Vector3, root: boolean }[],
+  ): void {
+    primary.getWorldPosition(this.dragPos)
+    this.dragPos.sub(start.position)
+    const ordered = drag
+      .filter((entry) => entry.root && entry.id !== start.id)
+      .sort((a, b) => this.depthOf(a.id) - this.depthOf(b.id))
+    for (const entry of ordered) {
+      const node = this.nodes.get(entry.id)
+      if (!node) continue
+      this.dragTargetPos.copy(entry.position).add(this.dragPos)
+      this.writeWorldPosition(node.object, this.dragTargetPos)
+    }
+    if (!start.root) {
+      this.dragTargetPos.copy(start.position).add(this.dragPos)
+      this.writeWorldPosition(primary, this.dragTargetPos)
+    }
+  }
+
+  private applyMatrixDrag(
+    primary: THREE.Object3D,
+    start: { id: string, world: THREE.Matrix4, root: boolean },
+    drag: { id: string, world: THREE.Matrix4, root: boolean }[],
+  ): void {
+    primary.updateWorldMatrix(true, false)
+    if (Math.abs(start.world.determinant()) < 1e-8) return
+    this.dragInverse.copy(start.world).invert()
+    this.dragDelta.multiplyMatrices(primary.matrixWorld, this.dragInverse)
+    const ordered = drag
+      .filter((entry) => entry.root && entry.id !== start.id)
+      .sort((a, b) => this.depthOf(a.id) - this.depthOf(b.id))
+    for (const entry of ordered) {
+      const node = this.nodes.get(entry.id)
+      if (!node) continue
+      this.dragWorld.multiplyMatrices(this.dragDelta, entry.world)
+      this.writeWorldMatrix(node.object, this.dragWorld)
+    }
+    if (!start.root) {
+      this.dragWorld.multiplyMatrices(this.dragDelta, start.world)
+      this.writeWorldMatrix(primary, this.dragWorld)
+    }
+  }
+
+  private writeWorldPosition(object: THREE.Object3D, worldPosition: THREE.Vector3): void {
+    const parent = object.parent
+    if (!parent) {
+      object.position.copy(worldPosition)
+    } else {
+      parent.updateWorldMatrix(true, false)
+      object.position.copy(worldPosition)
+      parent.worldToLocal(object.position)
+    }
+    object.updateMatrixWorld(true)
+  }
+
+  private writeWorldMatrix(object: THREE.Object3D, world: THREE.Matrix4): void {
+    const parent = object.parent
+    if (!parent) {
+      world.decompose(object.position, object.quaternion, object.scale)
+    } else {
+      parent.updateWorldMatrix(true, false)
+      this.dragInverse.copy(parent.matrixWorld).invert()
+      this.dragLocal.multiplyMatrices(this.dragInverse, world)
+      this.dragLocal.decompose(object.position, object.quaternion, object.scale)
+    }
+    object.updateMatrixWorld(true)
+  }
+
+  private depthOf(id: string): number {
+    let depth = 0
+    let parentId = this.nodes.get(id)?.parentId ?? null
+    while (parentId) {
+      depth += 1
+      parentId = this.nodes.get(parentId)?.parentId ?? null
+    }
+    return depth
+  }
+
+  private ensureSelectionHelpers(count: number): void {
+    const scene = this.scene
+    if (!scene) return
+    while (this.selectionHelpers.length < count) {
+      const box = new THREE.Box3()
+      const helper = new THREE.Box3Helper(box, 0x569eff)
+      helper.userData.editorHidden = true
+      helper.visible = false
+      helper.frustumCulled = false
+      helper.raycast = () => {}
+      scene.add(helper)
+      this.selectionHelpers.push(helper)
+      this.selectionBoxes.push(box)
+    }
+  }
+
+  private paintSelectionHelper(helper: THREE.Box3Helper, active: boolean): void {
+    const materials = Array.isArray(helper.material) ? helper.material : [helper.material]
+    const color = active ? 0x569eff : 0x8eacd4
+    for (const material of materials) {
+      if (material instanceof THREE.LineBasicMaterial) material.color.setHex(color)
+    }
+  }
+
+  private isDrawn(object: THREE.Object3D): boolean {
+    let current: THREE.Object3D | null = object
+    while (current) {
+      if (!current.visible) return false
+      current = current.parent
+    }
+    return true
+  }
+
+  private hitsMarquee(
+    node: EditorNode,
+    left: number,
+    top: number,
+    right: number,
+    bottom: number,
+    width: number,
+    height: number,
+  ): boolean {
+    if (!this.isDrawn(node.object)) return false
+    node.object.updateWorldMatrix(true, false)
+    const mesh = node.object instanceof THREE.Mesh ? node.object : null
+    const geometry = mesh?.geometry
+    if (geometry) {
+      if (!geometry.boundingBox) geometry.computeBoundingBox()
+      if (geometry.boundingBox && !geometry.boundingBox.isEmpty()) {
+        this.marqueeBounds.copy(geometry.boundingBox).applyMatrix4(node.object.matrixWorld)
+        if (!this.marqueeBounds.isEmpty()) {
+          return this.boundsHitMarquee(this.marqueeBounds, left, top, right, bottom, width, height)
+        }
+      }
+    }
+    node.object.getWorldPosition(this.marqueePoint)
+    return this.pointHitsMarquee(this.marqueePoint, left, top, right, bottom, width, height)
+  }
+
+  private boundsHitMarquee(
+    box: THREE.Box3,
+    left: number,
+    top: number,
+    right: number,
+    bottom: number,
+    width: number,
+    height: number,
+  ): boolean {
+    let minX = Infinity
+    let minY = Infinity
+    let maxX = -Infinity
+    let maxY = -Infinity
+    let any = false
+    for (let corner = 0; corner < 8; corner += 1) {
+      this.marqueePoint.set(
+        corner & 1 ? box.max.x : box.min.x,
+        corner & 2 ? box.max.y : box.min.y,
+        corner & 4 ? box.max.z : box.min.z,
+      )
+      if (!this.projectCanvas(this.marqueePoint, width, height)) continue
+      any = true
+      minX = Math.min(minX, this.marqueePoint.x)
+      maxX = Math.max(maxX, this.marqueePoint.x)
+      minY = Math.min(minY, this.marqueePoint.y)
+      maxY = Math.max(maxY, this.marqueePoint.y)
+    }
+    if (!any) return false
+    return minX <= right && maxX >= left && minY <= bottom && maxY >= top
+  }
+
+  private pointHitsMarquee(
+    world: THREE.Vector3,
+    left: number,
+    top: number,
+    right: number,
+    bottom: number,
+    width: number,
+    height: number,
+  ): boolean {
+    this.marqueePoint.copy(world)
+    if (!this.projectCanvas(this.marqueePoint, width, height)) return false
+    const slop = 16
+    return this.marqueePoint.x >= left - slop
+      && this.marqueePoint.x <= right + slop
+      && this.marqueePoint.y >= top - slop
+      && this.marqueePoint.y <= bottom + slop
+  }
+
+  /** Writes canvas pixels into `marqueePoint`. False when the point is behind the camera. */
+  private projectCanvas(world: THREE.Vector3, width: number, height: number): boolean {
+    const camera = this.camera
+    if (!camera || width < 1 || height < 1) return false
+    this.marqueeView.copy(world).applyMatrix4(camera.matrixWorldInverse)
+    if (this.marqueeView.z >= -1e-4) return false
+    this.marqueePoint.copy(world).project(camera)
+    this.marqueePoint.x = (this.marqueePoint.x * 0.5 + 0.5) * width
+    this.marqueePoint.y = (-this.marqueePoint.y * 0.5 + 0.5) * height
+    return Number.isFinite(this.marqueePoint.x) && Number.isFinite(this.marqueePoint.y)
   }
 
   private uniqueResourceName(base: string, map: Map<string, { id: string, name: string }>, ignoreId?: string): string {

@@ -20,6 +20,16 @@ useMountedScene(
   <div class="viewport-wrap">
     <div ref="host" class="viewport" />
     <ViewportToolbar />
+    <div
+      v-if="store.marquee"
+      class="selection-marquee"
+      :style="{
+        left: `${store.marquee.x}px`,
+        top: `${store.marquee.y}px`,
+        width: `${store.marquee.width}px`,
+        height: `${store.marquee.height}px`,
+      }"
+    />
     <div v-if="store.shading === 'debug'" class="debug-legend">
       <span>Color</span>
       <span>Depth</span>
@@ -28,7 +38,7 @@ useMountedScene(
     </div>
     <div class="vp-meta">
       <template v-if="store.metaName">
-        <strong>{{ store.metaName }}</strong><span v-if="store.metaTris"> · {{ store.metaTris }} tris</span>
+        <strong>{{ store.metaName }}</strong><span v-if="store.selectedIds.length > 1"> · {{ store.selectedIds.length }} selected</span><span v-else-if="store.metaTris"> · {{ store.metaTris }} tris</span>
       </template>
     </div>
     <div v-if="store.bootError" class="boot-error">The 3D viewport failed to start. {{ store.bootError }}</div>

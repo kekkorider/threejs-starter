@@ -21,6 +21,17 @@ const visible = computed(() => !props.query || selfMatch.value || componentHits.
 const open = computed(() => store.expanded.has(props.id) || props.query.length > 0)
 const renaming = computed(() => store.renamingId === props.id)
 const nested = computed(() => (node.value?.childIds.length ?? 0) + (node.value?.componentIds.length ?? 0) > 0)
+const rowSelected = computed(() => {
+  const current = node.value
+  if (!current) return false
+  if (current.componentIds.includes(store.selectedComponentId ?? '')) return false
+  return store.selectedIds.includes(current.id)
+})
+const rowCurrent = computed(() => rowSelected.value && store.selectedIds.length > 1 && store.selectedId === node.value?.id)
+
+function onSelect(event: MouseEvent): void {
+  store.selectFromTree(props.id, event.shiftKey, event.ctrlKey || event.metaKey)
+}
 
 watch(renaming, async (active) => {
   if (!active) return
@@ -98,11 +109,11 @@ function componentVisible(componentId: string): boolean {
   <template v-if="node && visible">
     <div
       class="tree-row"
-      :class="{ selected: store.selectedId === node.id && !node.componentIds.includes(store.selectedComponentId ?? ''), 'drop-target': drop }"
+      :class="{ selected: rowSelected, current: rowCurrent, 'drop-target': drop }"
       :style="{ paddingLeft: `${6 + depth * 14}px` }"
       :draggable="!node.isRoot"
       :title="node.instancePath ? `Instance of ${node.instancePath}` : undefined"
-      @click="store.select(node.id)"
+      @click="onSelect"
       @dblclick.stop="store.beginRename(node.id)"
       @contextmenu.prevent="store.openContextMenu(node.id, $event.clientX, $event.clientY)"
       @dragstart="onDragStart"

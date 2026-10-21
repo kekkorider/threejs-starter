@@ -159,6 +159,8 @@ export const useEditorStore = defineStore('editor', () => {
   const snap = ref(false)
   const shading = ref<'shaded' | 'debug'>('shaded')
   const selectedId = ref<string | null>(null)
+  const selectedIds = ref<string[]>([])
+  const marquee = ref<{ x: number, y: number, width: number, height: number } | null>(null)
   const rootId = ref('')
   const boundMaterialId = ref<string | null>(null)
   const tslSource = ref('// Select a mesh and assign a TSL material.\n')
@@ -213,6 +215,10 @@ export const useEditorStore = defineStore('editor', () => {
   const historyTick = ref(0)
   let replaying = false
   let gesture: { label: string, before: SceneFile, beforeSelection: SelectionBookmark } | null = null
+  /** Scene-tree row a Shift-click ranges from. */
+  let anchorId: string | null = null
+  /** Shift-add and shift-range keep the anchor instead of moving it to the active node. */
+  let keepAnchor = false
 
   const nodes = computed(() => {
     void revision.value
@@ -433,7 +439,10 @@ export const useEditorStore = defineStore('editor', () => {
   }
 
   function touch(forceMaterial = false): void {
+    const previousKey = selectedIds.value.join('\0')
     selectedId.value = engine.selectedId
+    selectedIds.value = engine.selectedIds.slice()
+    if (!keepAnchor && previousKey !== selectedIds.value.join('\0')) anchorId = engine.selectedId
     rootId.value = engine.rootId
     playing.value = engine.playing
     paused.value = engine.paused
@@ -454,25 +463,36 @@ export const useEditorStore = defineStore('editor', () => {
     return engine.nodes.get(id)?.name || 'Node'
   }
 
-  function bookmark(): SelectionBookmark {
+  function pathOf(id: string): number[] | null {
     const path: number[] = []
-    let current = engine.selectedId ? engine.nodes.get(engine.selectedId) : undefined
+    let current = engine.nodes.get(id)
+    if (!current) return null
     while (current && !current.isRoot && current.parentId) {
       const parent = engine.nodes.get(current.parentId)
-      if (!parent) break
+      if (!parent) return null
       const index = parent.childIds.indexOf(current.id)
-      if (index < 0) break
+      if (index < 0) return null
       path.push(index)
       current = parent
     }
+    if (!current?.isRoot) return null
     path.reverse()
+    return path
+  }
+
+  function bookmark(): SelectionBookmark {
+    const paths: number[][] = []
+    for (const id of engine.selectedIds) {
+      const path = pathOf(id)
+      if (path) paths.push(path)
+    }
     let componentIndex: number | null = null
     if (selectedComponentId.value && engine.selectedId) {
       const node = engine.nodes.get(engine.selectedId)
       const index = node?.componentIds.indexOf(selectedComponentId.value) ?? -1
       if (index >= 0) componentIndex = index
     }
-    return { path, componentIndex }
+    return { paths, componentIndex }
   }
 
   function nodeAtPath(path: number[]): string | null {
@@ -488,11 +508,16 @@ export const useEditorStore = defineStore('editor', () => {
   }
 
   function applyBookmark(mark: SelectionBookmark): void {
-    const id = nodeAtPath(mark.path)
-    engine.select(id)
+    const ids: string[] = []
+    for (const path of mark.paths) {
+      const id = nodeAtPath(path)
+      if (id) ids.push(id)
+    }
+    engine.setSelection(ids)
     selectedComponentId.value = null
-    if (mark.componentIndex !== null && id) {
-      const instanceId = engine.nodes.get(id)?.componentIds[mark.componentIndex]
+    const active = engine.selectedId
+    if (mark.componentIndex !== null && active) {
+      const instanceId = engine.nodes.get(active)?.componentIds[mark.componentIndex]
       if (instanceId) selectedComponentId.value = instanceId
     }
   }
@@ -531,7 +556,8 @@ export const useEditorStore = defineStore('editor', () => {
   }
 
   function gestureLabel(): string {
-    const name = nodeLabel(engine.selectedId)
+    const roots = engine.selectionRoots(engine.selectedIds)
+    const name = roots.length > 1 ? `${roots.length} nodes` : nodeLabel(roots[0] ?? engine.selectedId)
     if (engine.tool === 'rotate') return `Rotate ${name}`
     if (engine.tool === 'scale') return `Scale ${name}`
     return `Move ${name}`
@@ -676,6 +702,82 @@ export const useEditorStore = defineStore('editor', () => {
     touch()
   }
 
+  function selectPicked(id: string | null, shift: boolean, ctrl: boolean): void {
+    if ((shift || ctrl) && !id) return
+    selectedComponentId.value = null
+    keepAnchor = Boolean(shift && id)
+    try {
+      if (ctrl && id) engine.toggleSelected(id)
+      else if (shift && id) engine.addSelection([id], id)
+      else engine.select(id)
+      touch()
+    } finally {
+      keepAnchor = false
+    }
+  }
+
+  function selectBoxed(ids: string[], shift: boolean, ctrl: boolean): void {
+    selectedComponentId.value = null
+    keepAnchor = shift
+    try {
+      if (ctrl && shift) engine.toggleEach(ids)
+      else if (ctrl) engine.removeSelection(ids)
+      else if (shift) engine.addSelection(ids, ids.at(-1) ?? null)
+      else engine.setSelection(ids)
+      touch()
+    } finally {
+      keepAnchor = false
+    }
+  }
+
+  /** Rows currently shown in the scene tree, top to bottom. Shift-click selects a span of these. */
+  function visibleNodeIds(): string[] {
+    const query = sceneFilter.value.trim().toLowerCase()
+    const ids: string[] = []
+    const walk = (id: string, parentOpen: boolean): void => {
+      if (!parentOpen) return
+      const node = nodeById.value.get(id)
+      if (!node) return
+      const self = !query || node.name.toLowerCase().includes(query)
+      const componentHit = !query || node.componentIds.some((componentId) => {
+        return componentById.value.get(componentId)?.name.toLowerCase().includes(query) ?? false
+      })
+      const childListed = node.childIds.map((childId) => !query || nodeMatches(childId, query))
+      const rowVisible = !query || self || componentHit || childListed.some(Boolean)
+      if (!rowVisible) return
+      ids.push(id)
+      const open = expanded.value.has(id) || query.length > 0
+      node.childIds.forEach((childId, index) => {
+        if (query && !childListed[index]) return
+        walk(childId, open)
+      })
+    }
+    if (rootId.value) walk(rootId.value, true)
+    return ids
+  }
+
+  function selectFromTree(id: string, shift: boolean, ctrl: boolean): void {
+    selectedComponentId.value = null
+    const order = visibleNodeIds()
+    const from = anchorId ? order.indexOf(anchorId) : -1
+    const to = order.indexOf(id)
+    const ranged = shift && from >= 0 && to >= 0
+    keepAnchor = ranged
+    try {
+      if (ranged) {
+        const start = Math.min(from, to)
+        const end = Math.max(from, to)
+        const range = order.slice(start, end + 1)
+        if (ctrl) engine.addSelection(range, id)
+        else engine.setSelection(range, id)
+      } else if (ctrl) engine.toggleSelected(id)
+      else engine.select(id)
+      touch()
+    } finally {
+      keepAnchor = false
+    }
+  }
+
   function selectComponent(id: string): void {
     const instance = engine.componentInstances.get(id)
     if (!instance) return
@@ -727,22 +829,74 @@ export const useEditorStore = defineStore('editor', () => {
     let originX = 0
     let originY = 0
     let gizmoPointer = false
+    let tracking = false
+    let boxed = false
+
+    const clearMarquee = (): void => {
+      marquee.value = null
+      boxed = false
+      tracking = false
+    }
+
     canvas.addEventListener('pointerdown', (event) => {
-      gizmoPointer = Boolean(engine.controls?.dragging || engine.controls?.axis)
-      if (event.button === 0) {
-        originX = event.clientX
-        originY = event.clientY
+      gizmoPointer = engine.tool !== 'select' && Boolean(engine.controls?.dragging || engine.controls?.axis)
+      if (event.button !== 0) return
+      originX = event.clientX
+      originY = event.clientY
+      tracking = engine.chromeVisible && !engine.playing && screen.value !== 'game'
+      boxed = false
+      if (tracking && engine.tool === 'select' && !gizmoPointer) {
+        try { canvas.setPointerCapture(event.pointerId) } catch { /* the pointer may already be gone */ }
+      }
+    })
+    canvas.addEventListener('pointermove', (event) => {
+      if (!tracking || engine.tool !== 'select' || gizmoPointer) {
+        if (boxed) {
+          marquee.value = null
+          boxed = false
+        }
+        return
+      }
+      if ((event.buttons & 1) === 0) return
+      const dx = event.clientX - originX
+      const dy = event.clientY - originY
+      if (!boxed && Math.hypot(dx, dy) <= 5) return
+      boxed = true
+      const rect = canvas.getBoundingClientRect()
+      marquee.value = {
+        x: Math.min(event.clientX, originX) - rect.left,
+        y: Math.min(event.clientY, originY) - rect.top,
+        width: Math.abs(dx),
+        height: Math.abs(dy),
       }
     })
     canvas.addEventListener('pointerup', (event) => {
-      if (!engine.chromeVisible) return
-      if (event.button !== 0 || gizmoPointer || engine.playing || screen.value === 'game') return
-      if (Math.hypot(event.clientX - originX, event.clientY - originY) > 5) return
+      const wasBoxed = boxed
       const rect = canvas.getBoundingClientRect()
+      if (!engine.chromeVisible || event.button !== 0 || gizmoPointer || engine.playing || screen.value === 'game') {
+        clearMarquee()
+        return
+      }
+      if (wasBoxed && engine.tool === 'select') {
+        const ids = engine.nodesInRect(
+          originX - rect.left,
+          originY - rect.top,
+          event.clientX - rect.left,
+          event.clientY - rect.top,
+        )
+        selectBoxed(ids, event.shiftKey, event.ctrlKey || event.metaKey)
+        clearMarquee()
+        return
+      }
+      clearMarquee()
+      if (Math.hypot(event.clientX - originX, event.clientY - originY) > 5) return
       if (rect.width < 1 || rect.height < 1) return
       const x = ((event.clientX - rect.left) / rect.width) * 2 - 1
       const y = -((event.clientY - rect.top) / rect.height) * 2 + 1
-      select(engine.pick(x, y))
+      selectPicked(engine.pick(x, y), event.shiftKey, event.ctrlKey || event.metaKey)
+    })
+    canvas.addEventListener('pointercancel', () => {
+      clearMarquee()
     })
     canvas.addEventListener('contextmenu', (event) => {
       if (engine.chromeVisible) event.preventDefault()
@@ -849,17 +1003,17 @@ export const useEditorStore = defineStore('editor', () => {
   }
 
   function duplicateSelection(): void {
-    const id = engine.selectedId
-    if (!ready.value || !id) return
-    const name = nodeLabel(id)
-    record(`Duplicate ${name}`, () => {
-      engine.duplicate(id)
-      const selectedNode = engine.selectedId
-      if (selectedNode) {
-        const next = new Set(expanded.value)
-        next.add(engine.nodes.get(selectedNode)?.parentId ?? selectedNode)
-        expanded.value = next
+    const ids = engine.selectionRoots(engine.selectedIds)
+    if (!ready.value || ids.length === 0) return
+    const label = ids.length === 1 ? `Duplicate ${nodeLabel(ids[0])}` : `Duplicate ${ids.length} nodes`
+    record(label, () => {
+      engine.duplicateMany(ids)
+      const next = new Set(expanded.value)
+      for (const id of engine.selectedIds) {
+        const parentId = engine.nodes.get(id)?.parentId
+        if (parentId) next.add(parentId)
       }
+      expanded.value = next
     }, { merge: false })
   }
 
@@ -868,11 +1022,11 @@ export const useEditorStore = defineStore('editor', () => {
       removeComponent(selectedComponentId.value)
       return
     }
-    const id = engine.selectedId
-    if (!ready.value || !id) return
-    const name = nodeLabel(id)
-    record(`Delete ${name}`, () => {
-      engine.deleteNode(id)
+    const ids = engine.selectionRoots(engine.selectedIds)
+    if (!ready.value || ids.length === 0) return
+    const label = ids.length === 1 ? `Delete ${nodeLabel(ids[0])}` : `Delete ${ids.length} nodes`
+    record(label, () => {
+      engine.deleteNodes(ids)
     }, { merge: false })
   }
 
@@ -1734,7 +1888,7 @@ export const useEditorStore = defineStore('editor', () => {
 
   function menuItems(name: string): MenuItem[] {
     const current = engine.selected()
-    const locked = !current || current.isRoot
+    const locked = engine.selectionRoots(engine.selectedIds).length === 0
     if (name === 'Scene') {
       return [
         { label: 'Undo', shortcut: 'Ctrl+Z', disabled: !canUndo.value, action: () => undo() },
@@ -1748,7 +1902,7 @@ export const useEditorStore = defineStore('editor', () => {
         { label: 'Create Node…', shortcut: 'Ctrl+A', action: () => openCreate() },
         { label: 'Create Component…', shortcut: 'Ctrl+C', action: () => openComponentDialog() },
         { label: 'Duplicate', shortcut: 'Ctrl+D', disabled: locked, action: () => duplicateSelection() },
-        { label: 'Rename', shortcut: 'F2', disabled: locked, action: () => current && beginRename(current.id) },
+        { label: 'Rename', shortcut: 'F2', disabled: !current || current.isRoot, action: () => current && beginRename(current.id) },
         { label: 'Delete', shortcut: 'Del', disabled: locked, action: () => deleteSelection() },
         { separator: true, label: '', action: () => {} },
         { label: 'Focus Selection', shortcut: 'F', disabled: locked, action: () => engine.focusSelected() },
@@ -1775,7 +1929,12 @@ export const useEditorStore = defineStore('editor', () => {
   }
 
   function openContextMenu(id: string, x: number, y: number): void {
-    select(id)
+    if (!engine.selectedIds.includes(id)) select(id)
+    else {
+      selectedComponentId.value = null
+      if (engine.selectedId !== id) engine.setSelection(engine.selectedIds, id)
+      touch()
+    }
     const node = engine.nodes.get(id)
     if (!node) return
     const items: MenuItem[] = [
@@ -1783,13 +1942,14 @@ export const useEditorStore = defineStore('editor', () => {
       { label: 'Instance Scene…', disabled: instanceChoices.value.length === 0, action: () => openInstanceDialog() },
     ]
     if (node.instancePath) items.push({ label: 'Make Local', action: () => makeLocal(id) })
+    const groupLocked = engine.selectionRoots(engine.selectedIds).length === 0
     items.push(
       { label: 'Add Component…', action: () => openComponentDialog() },
       { label: 'Rename', disabled: node.isRoot, action: () => beginRename(id) },
-      { label: 'Duplicate', disabled: node.isRoot, action: () => duplicateSelection() },
-      { label: 'Delete', disabled: node.isRoot, action: () => deleteSelection() },
+      { label: 'Duplicate', disabled: groupLocked, action: () => duplicateSelection() },
+      { label: 'Delete', disabled: groupLocked, action: () => deleteSelection() },
       { separator: true, label: '', action: () => {} },
-      { label: 'Focus', disabled: node.isRoot, action: () => engine.focusSelected() },
+      { label: 'Focus', disabled: groupLocked, action: () => engine.focusSelected() },
     )
     showPopup(new DOMRect(x, y, 0, 0), items, false)
   }
@@ -1994,6 +2154,8 @@ export const useEditorStore = defineStore('editor', () => {
     snap,
     shading,
     selectedId,
+    selectedIds,
+    marquee,
     rootId,
     boundMaterialId,
     tslSource,
@@ -2063,6 +2225,7 @@ export const useEditorStore = defineStore('editor', () => {
     gridSettings,
     nodeMatches,
     select,
+    selectFromTree,
     selectComponent,
     attach,
     hideChrome,

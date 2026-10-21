@@ -29,7 +29,7 @@ function onShading(event: Event): void {
         type="button"
         class="tool-btn"
         :class="{ active: store.tool === item.id }"
-        :title="`${item.label} (${item.key})`"
+        :title="item.id === 'select' ? 'Select (Q). Drag a rectangle to box-select. Shift adds, Ctrl toggles.' : `${item.label} (${item.key})`"
         @click="store.setTool(item.id)"
       >
         <Icon :name="item.icon" />

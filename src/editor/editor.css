@@ -207,6 +207,9 @@
   background: rgba(86, 158, 255, 0.28);
   box-shadow: inset 0 0 0 1px rgba(86, 158, 255, 0.85);
 }
+.tree-row.selected.current {
+  box-shadow: inset 3px 0 0 #d6e8ff, inset 0 0 0 1px rgba(86, 158, 255, 0.95);
+}
 .tree-row.drop-target { box-shadow: inset 0 0 0 1px var(--accent); background: rgba(86, 158, 255, 0.16); }
 .tree-row .twist {
   width: 16px;
@@ -349,6 +352,14 @@
   font-size: 12px;
 }
 .vp-meta strong { font-weight: 650; }
+.selection-marquee {
+  position: absolute;
+  z-index: 4;
+  box-sizing: border-box;
+  pointer-events: none;
+  border: 1px solid #8ebfff;
+  background: rgba(86, 158, 255, 0.22);
+}
 
 .boot-error {
   position: absolute;
@@ -513,6 +524,7 @@
 .node-head input:hover, .node-head input:focus { background: var(--inset); border-color: #141414; }
 .node-head input:focus { border-color: var(--accent); outline: none; }
 .inherits { color: var(--font-mute); font-size: 11px; padding: 0 8px 6px 36px; }
+.multi-note { color: var(--font-dim); font-size: 11px; padding: 0 10px 8px 36px; }
 
 .section { border-top: 1px solid #202020; }
 .section-h {
