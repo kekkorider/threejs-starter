@@ -1,8 +1,8 @@
 import type { SceneFile } from './sceneFile'
 
-/** Where the selection was, as child indexes from the scene root. */
+/** Where the selection was. Each path is child indexes from the scene root. The last path is the active node. */
 export interface SelectionBookmark {
-  path: number[]
+  paths: number[][]
   componentIndex: number | null
 }
 

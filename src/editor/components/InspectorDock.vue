@@ -48,6 +48,9 @@ function onName(event: Event): void {
           <input :value="node.name" :disabled="node.isRoot" @change="onName" />
         </div>
         <div class="inherits">{{ node.inherits }}</div>
+        <div v-if="store.selectedIds.length > 1" class="multi-note">
+          {{ store.selectedIds.length }} nodes selected. Editing {{ node.name }}.
+        </div>
         <div v-if="node.instancePath" class="instance-note">
           <span>Instance of {{ node.instancePath }}</span>
           <button type="button" class="btn" @click="store.makeLocal(node.id)">Make Local</button>

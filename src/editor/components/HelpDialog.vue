@@ -20,6 +20,10 @@ Ctrl+Shift+A  Instance scene
 F2       Rename
 Del      Delete
 F        Focus selection
+Shift+click  Add to the selection
+Ctrl+click   Toggle a node in the selection
+Box drag     Select mode: drag a rectangle. Shift adds, Ctrl removes
+Right-drag   Orbit while Select is active
 Q W E R  Select, move, rotate, scale
 Y        Toggle snap
 F5       Play
