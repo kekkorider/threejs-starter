@@ -11,9 +11,9 @@ When a feature lands, move it from **Not yet** into **Already in place**. Do not
 ### Shell
 
 - Top menus: Scene, Project, Debug, Editor, Help.
-- Docks: Scene tree, File system, Inspector, and a bottom panel with TSL and Output.
+- Docks: Scene tree, File system, Inspector, Script, and a bottom panel with TSL and Output.
 - Screens: 3D, Script, Game, AssetLib. The 2D screen was removed on purpose. Everything in this editor is 3D.
-- Draggable splitters. Dragging the File system splitter upward makes that dock taller.
+- Draggable splitters. Dragging the File system splitter upward makes that dock taller. Dragging the Script splitter upward makes that dock taller.
 - Create Node dialog, grouped as Node, Mesh, Camera, and Light.
 - Right-click menus on the scene tree and on inspector values.
 
@@ -83,6 +83,12 @@ When a feature lands, move it from **Not yet** into **Already in place**. Do not
 - Apply writes the open TypeScript file and stays disabled until the source changes. Enter keeps the current indentation. The Applied label fades out after a second.
 - The inspector edits a component's parameters, such as Spin's axis and speed.
 
+### Scripts
+
+- TSL stays the material script in the bottom panel.
+- The Script dock follows the selected node. The slot shows that node's script, or `[empty]` when it has none. Its menu attaches a script, switches among the scripts on that node, opens one in the Script screen, or detaches it. The source under the slot edits in place, and Apply writes the file. Drag a component from the File system onto the dock to attach it.
+- A node with a script shows an icon on its scene-tree row. Clicking it opens that script in the dock and leaves the inspector on the node. Several scripts open a list. Right-click the node and choose Open Script to do the same.
+
 ### History
 
 - Undo and redo for inspector edits, transforms, create, delete, and reparent. Ctrl+Z undoes. Ctrl+Shift+Z and Ctrl+Y redo. Scene → Undo and Scene → Redo, and the back and forward buttons on the Scene dock, do the same.
@@ -114,10 +120,6 @@ Build these in an order that keeps the editor usable. A half-wired Godot feature
 
 - Property groups that match Godot sections more closely, including resource slots you can drag from the File system.
 - Keying a property for animation, once an animation player exists.
-
-### Scripts
-
-- TSL remains the material script. A Godot-style script dock for the selected node is not in place.
 
 ### Simulation
 

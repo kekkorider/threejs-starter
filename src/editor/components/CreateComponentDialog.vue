@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import { COMPONENT_DRAG_PREFIX, componentTemplate, identifierName } from '../behaviors'
+import { COMPONENT_DRAG_PREFIX, componentTemplate, identifierName, markScriptDrag } from '../behaviors'
 import { useEditorStore } from '../stores/editor'
 import CodeEditor from './CodeEditor.vue'
 import Icon from './Icon.vue'
@@ -103,8 +103,10 @@ function onBackdrop(event: PointerEvent): void {
 }
 
 function onDragStart(event: DragEvent, id: string): void {
-  event.dataTransfer?.setData('text/plain', `${COMPONENT_DRAG_PREFIX}${id}`)
-  if (event.dataTransfer) event.dataTransfer.effectAllowed = 'copy'
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = 'copy'
+    markScriptDrag(event.dataTransfer, `${COMPONENT_DRAG_PREFIX}${id}`)
+  }
   dragging.value = true
 }
 

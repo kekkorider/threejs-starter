@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import { COMPONENT_DRAG_PREFIX, INSTANCE_DRAG_PREFIX } from '../behaviors'
+import { COMPONENT_DRAG_PREFIX, INSTANCE_DRAG_PREFIX, markScriptDrag } from '../behaviors'
 import { isSceneDrag, sceneDragPath } from '../sceneFile'
 import { kindClass, kindIcon } from '../lib/format'
 import { useEditorStore } from '../stores/editor'
@@ -28,6 +28,17 @@ const rowSelected = computed(() => {
   return store.selectedIds.includes(current.id)
 })
 const rowCurrent = computed(() => rowSelected.value && store.selectedIds.length > 1 && store.selectedId === node.value?.id)
+const scriptTitle = computed(() => {
+  const ids = node.value?.componentIds ?? []
+  if (ids.length === 0) return ''
+  if (ids.length > 1) return `Open Script (${ids.length})`
+  const instance = store.componentById.get(ids[0] ?? '')
+  return instance ? `Open Script: ${instance.path}` : 'Open Script'
+})
+
+function onScriptClick(event: MouseEvent): void {
+  store.openNodeScript(props.id, event.clientX, event.clientY)
+}
 
 function onSelect(event: MouseEvent): void {
   store.selectFromTree(props.id, event.shiftKey, event.ctrlKey || event.metaKey)
@@ -51,8 +62,9 @@ function onDragStart(event: DragEvent): void {
 
 function onInstanceDrag(event: DragEvent, instanceId: string): void {
   event.stopPropagation()
-  event.dataTransfer?.setData('text/plain', `${INSTANCE_DRAG_PREFIX}${instanceId}`)
-  if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move'
+  if (!event.dataTransfer) return
+  event.dataTransfer.effectAllowed = 'move'
+  markScriptDrag(event.dataTransfer, `${INSTANCE_DRAG_PREFIX}${instanceId}`)
 }
 
 function allowDrop(event: DragEvent): void {
@@ -144,6 +156,16 @@ function componentVisible(componentId: string): boolean {
         @blur="onBlur"
       />
       <span v-else class="label">{{ node.name }}</span>
+      <button
+        v-if="node.componentIds.length > 0 && !renaming"
+        type="button"
+        class="icon-btn script-btn"
+        :title="scriptTitle"
+        @click.stop="onScriptClick"
+        @dblclick.stop
+      >
+        <Icon name="script" />
+      </button>
     </div>
     <template v-if="open">
       <div

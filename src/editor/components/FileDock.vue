@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { COMPONENT_DRAG_PREFIX } from '../behaviors'
+import { COMPONENT_DRAG_PREFIX, markScriptDrag } from '../behaviors'
 import { writeSceneDrag } from '../sceneFile'
 import Icon from './Icon.vue'
 import { useEditorStore } from '../stores/editor'
@@ -45,8 +45,9 @@ function onSceneDrag(event: DragEvent, path: string): void {
 
 function onComponentDrag(event: DragEvent, id: string): void {
   suppressClick = true
-  event.dataTransfer?.setData('text/plain', `${COMPONENT_DRAG_PREFIX}${id}`)
-  if (event.dataTransfer) event.dataTransfer.effectAllowed = 'copy'
+  if (!event.dataTransfer) return
+  event.dataTransfer.effectAllowed = 'copy'
+  markScriptDrag(event.dataTransfer, `${COMPONENT_DRAG_PREFIX}${id}`)
 }
 
 function onComponentClick(id: string): void {

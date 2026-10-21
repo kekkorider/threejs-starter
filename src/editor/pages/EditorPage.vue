@@ -12,6 +12,7 @@ import InspectorDock from '../components/InspectorDock.vue'
 import PopupMenu from '../components/PopupMenu.vue'
 import SceneDock from '../components/SceneDock.vue'
 import SceneFileDialog from '../components/SceneFileDialog.vue'
+import ScriptDock from '../components/ScriptDock.vue'
 import ScriptScreen from '../components/ScriptScreen.vue'
 import TopBar from '../components/TopBar.vue'
 import Viewport from '../components/Viewport.vue'
@@ -19,7 +20,7 @@ import { useEditorStore } from '../stores/editor'
 import '../editor.css'
 
 const store = useEditorStore()
-const metrics = reactive({ left: 272, right: 318, bottom: 236, files: 200 })
+const metrics = reactive({ left: 272, right: 318, bottom: 236, files: 200, script: 280 })
 
 function styleVars(): Record<string, string> {
   return {
@@ -27,6 +28,7 @@ function styleVars(): Record<string, string> {
     '--right': `${metrics.right}px`,
     '--bottom': `${metrics.bottom}px`,
     '--files': `${metrics.files}px`,
+    '--script': `${metrics.script}px`,
   }
 }
 
@@ -124,6 +126,11 @@ onBeforeUnmount(() => {
       />
       <aside class="docks right">
         <InspectorDock />
+        <div
+          class="splitter h"
+          @pointerdown="onSplit($event, 'y', (delta) => { metrics.script = clamp(metrics.script - delta, 140, 560) })"
+        />
+        <ScriptDock />
       </aside>
     </div>
     <PopupMenu
