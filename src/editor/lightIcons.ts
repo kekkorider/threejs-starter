@@ -90,6 +90,124 @@ export function disposeLightArrow(object: THREE.Object3D): void {
   arrow.removeFromParent()
 }
 
+/**
+ * Cone length used when Range is 0. Three treats that as unlimited, so the gizmo
+ * still draws the angle instead of collapsing to a point.
+ */
+const UNLIMITED_SPOT_RANGE = 10
+
+const coneScale = new THREE.Vector3()
+
+/**
+ * Wire cone for a spot light, in addition to the direction arrow.
+ * The ring sits where Angle meets Range (on the range sphere), eight spokes
+ * join it to the light, and a center line runs out to Range along local -Z.
+ */
+export function attachSpotCone(object: THREE.Object3D): void {
+  if (object.getObjectByName('SpotCone')) return
+  const material = new THREE.LineBasicNodeMaterial({
+    color: object instanceof THREE.SpotLight ? object.color : 0xff8a3d,
+    depthTest: true,
+    depthWrite: false,
+    toneMapped: false,
+    fog: false,
+  })
+  const cone = new THREE.Group()
+  cone.name = 'SpotCone'
+  cone.userData.editorHidden = true
+  cone.userData.spotCone = true
+  cone.add(
+    coneLine('SpotConeCap', ringPositions(48), material),
+    coneLine('SpotConeSpokes', spokePositions(8), material),
+    coneLine('SpotConeAxis', [0, 0, 0, 0, 0, -1], material),
+  )
+  object.add(cone)
+  updateSpotCone(object)
+}
+
+export function updateSpotCone(object: THREE.Object3D): void {
+  if (!(object instanceof THREE.SpotLight)) return
+  const cone = object.getObjectByName('SpotCone')
+  if (!cone) return
+  const range = object.distance > 0 ? object.distance : UNLIMITED_SPOT_RANGE
+  const angle = THREE.MathUtils.clamp(object.angle, 0, Math.PI / 2)
+  const radius = range * Math.sin(angle)
+  const depth = Math.max(range * Math.cos(angle), 1e-4)
+  object.getWorldScale(coneScale)
+  const sx = nonzero(coneScale.x)
+  const sy = nonzero(coneScale.y)
+  const sz = nonzero(coneScale.z)
+  cone.getObjectByName('SpotConeCap')?.scale.set(radius / sx, radius / sy, depth / sz)
+  cone.getObjectByName('SpotConeSpokes')?.scale.set(radius / sx, radius / sy, depth / sz)
+  cone.getObjectByName('SpotConeAxis')?.scale.set(1 / sx, 1 / sy, range / sz)
+  const material = coneMaterial(cone)
+  material?.color.copy(object.color)
+}
+
+export function disposeSpotCone(object: THREE.Object3D): void {
+  const cone = object.getObjectByName('SpotCone')
+  if (!cone) return
+  const geometries = new Set<THREE.BufferGeometry>()
+  const materials = new Set<THREE.Material>()
+  for (const child of [...cone.children]) {
+    if (!(child instanceof THREE.LineSegments)) continue
+    if (!geometries.has(child.geometry)) {
+      geometries.add(child.geometry)
+      child.geometry.dispose()
+    }
+    const material = child.material
+    if (!Array.isArray(material) && !materials.has(material)) {
+      materials.add(material)
+      material.dispose()
+    }
+  }
+  cone.removeFromParent()
+}
+
+function coneLine(name: string, positions: number[], material: THREE.LineBasicNodeMaterial): THREE.LineSegments {
+  const geometry = new THREE.BufferGeometry()
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+  const line = new THREE.LineSegments(geometry, material)
+  line.name = name
+  line.userData.editorHidden = true
+  line.userData.spotCone = true
+  line.castShadow = false
+  line.frustumCulled = false
+  line.raycast = () => {}
+  return line
+}
+
+function ringPositions(segments: number): number[] {
+  const positions: number[] = []
+  for (let index = 0; index < segments; index += 1) {
+    const start = (index / segments) * Math.PI * 2
+    const end = ((index + 1) / segments) * Math.PI * 2
+    positions.push(Math.cos(start), Math.sin(start), -1, Math.cos(end), Math.sin(end), -1)
+  }
+  return positions
+}
+
+function spokePositions(count: number): number[] {
+  const positions: number[] = []
+  for (let index = 0; index < count; index += 1) {
+    const angle = (index / count) * Math.PI * 2
+    positions.push(0, 0, 0, Math.cos(angle), Math.sin(angle), -1)
+  }
+  return positions
+}
+
+function coneMaterial(cone: THREE.Object3D): THREE.LineBasicNodeMaterial | null {
+  for (const child of cone.children) {
+    if (child instanceof THREE.LineSegments && child.material instanceof THREE.LineBasicNodeMaterial) return child.material
+  }
+  return null
+}
+
+function nonzero(value: number): number {
+  if (Math.abs(value) >= 1e-8) return value
+  return value < 0 ? -1e-8 : 1e-8
+}
+
 function lightIconTexture(kind: LightIconKind): THREE.CanvasTexture {
   const existing = cache.get(kind)
   if (existing) return existing
