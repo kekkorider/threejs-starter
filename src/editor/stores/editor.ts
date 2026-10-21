@@ -7,7 +7,8 @@ import { GEOMETRY_CATALOG, triangleCount, type GeometryType } from '../geometry'
 import type { NodeKind, ToolMode } from '../state'
 import { EditorState, NODE_TYPES, type EditorNode, type GridSettings, type LogLine, type SceneSettings, type ShadowTypeName } from '../state'
 import type { ComponentParameter } from '../behaviors'
-import { hasSceneFile, normalizeScenePath, readSceneLibrary, sceneFileName } from '../sceneFile'
+import { EditorHistory, sameScene, type HistoryRow, type SelectionBookmark } from '../history'
+import { hasSceneFile, normalizeScenePath, readSceneLibrary, sceneFileName, type SceneFile } from '../sceneFile'
 import { DEFAULT_FLAGS, TSL_PRESETS, matchingPresetId, type MaterialSide } from '../tsl'
 import { setViewportShading } from '../../webgl'
 
@@ -154,7 +155,7 @@ export const useEditorStore = defineStore('editor', () => {
   const inspectorFilter = ref('')
   const expanded = ref(new Set<string>())
   const collapsed = ref(new Set<string>())
-  const bottomTab = ref<'tsl' | 'output'>('tsl')
+  const bottomTab = ref<'tsl' | 'output' | 'history'>('tsl')
   const bottomCollapsed = ref(false)
   const distraction = ref(false)
   const renamingId = ref<string | null>(null)
@@ -190,6 +191,10 @@ export const useEditorStore = defineStore('editor', () => {
   let compileTimer = 0
   let scriptStatusTimer = 0
   let viewportBound = false
+  const history = new EditorHistory()
+  const historyTick = ref(0)
+  let replaying = false
+  let gesture: { label: string, before: SceneFile, beforeSelection: SelectionBookmark } | null = null
 
   const nodes = computed(() => {
     void revision.value
@@ -299,6 +304,40 @@ export const useEditorStore = defineStore('editor', () => {
     return Boolean(path && path !== scenePath.value && hasSceneFile(path))
   })
 
+  const canUndo = computed(() => {
+    void historyTick.value
+    void playing.value
+    return history.canUndo && !playing.value
+  })
+
+  const canRedo = computed(() => {
+    void historyTick.value
+    void playing.value
+    return history.canRedo && !playing.value
+  })
+
+  const undoTitle = computed(() => {
+    void historyTick.value
+    const label = history.undoLabel
+    return label ? `Undo ${label} (Ctrl+Z)` : 'Undo (Ctrl+Z)'
+  })
+
+  const redoTitle = computed(() => {
+    void historyTick.value
+    const label = history.redoLabel
+    return label ? `Redo ${label} (Ctrl+Shift+Z)` : 'Redo (Ctrl+Shift+Z)'
+  })
+
+  const historyEntries = computed((): HistoryRow[] => {
+    void historyTick.value
+    return history.entries()
+  })
+
+  const historyCursor = computed(() => {
+    void historyTick.value
+    return history.appliedCount
+  })
+
   const selected = computed(() => {
     void revision.value
     const id = selectedId.value
@@ -389,6 +428,184 @@ export const useEditorStore = defineStore('editor', () => {
     revision.value += 1
     syncMaterial(forceMaterial)
     writeMeta()
+  }
+
+  function nodeLabel(id: string | null | undefined): string {
+    if (!id) return 'Node'
+    return engine.nodes.get(id)?.name || 'Node'
+  }
+
+  function bookmark(): SelectionBookmark {
+    const path: number[] = []
+    let current = engine.selectedId ? engine.nodes.get(engine.selectedId) : undefined
+    while (current && !current.isRoot && current.parentId) {
+      const parent = engine.nodes.get(current.parentId)
+      if (!parent) break
+      const index = parent.childIds.indexOf(current.id)
+      if (index < 0) break
+      path.push(index)
+      current = parent
+    }
+    path.reverse()
+    let componentIndex: number | null = null
+    if (selectedComponentId.value && engine.selectedId) {
+      const node = engine.nodes.get(engine.selectedId)
+      const index = node?.componentIds.indexOf(selectedComponentId.value) ?? -1
+      if (index >= 0) componentIndex = index
+    }
+    return { path, componentIndex }
+  }
+
+  function nodeAtPath(path: number[]): string | null {
+    let id = engine.rootId
+    if (!id) return null
+    for (const index of path) {
+      const node = engine.nodes.get(id)
+      const childId = node?.childIds[index]
+      if (!childId) return id
+      id = childId
+    }
+    return id
+  }
+
+  function applyBookmark(mark: SelectionBookmark): void {
+    const id = nodeAtPath(mark.path)
+    engine.select(id)
+    selectedComponentId.value = null
+    if (mark.componentIndex !== null && id) {
+      const instanceId = engine.nodes.get(id)?.componentIds[mark.componentIndex]
+      if (instanceId) selectedComponentId.value = instanceId
+    }
+  }
+
+  function takeSnapshot(): SceneFile | null {
+    if (!engine.rootId || !engine.nodes.has(engine.rootId)) return null
+    try {
+      return engine.captureHistory()
+    } catch {
+      return null
+    }
+  }
+
+  function record(label: string, mutate: () => string | void, options?: { material?: boolean, merge?: boolean }): void {
+    if (replaying || gesture) {
+      mutate()
+      touch(options?.material)
+      return
+    }
+    const before = takeSnapshot()
+    const beforeSelection = bookmark()
+    const renamed = mutate()
+    const after = before ? takeSnapshot() : null
+    if (before && after && !sameScene(before, after)) {
+      history.push({
+        label: renamed || label,
+        before,
+        after,
+        beforeSelection,
+        afterSelection: bookmark(),
+        at: Date.now(),
+      }, options?.merge !== false)
+      historyTick.value += 1
+    }
+    touch(options?.material)
+  }
+
+  function gestureLabel(): string {
+    const name = nodeLabel(engine.selectedId)
+    if (engine.tool === 'rotate') return `Rotate ${name}`
+    if (engine.tool === 'scale') return `Scale ${name}`
+    return `Move ${name}`
+  }
+
+  function beginGesture(label: string): void {
+    if (replaying || gesture || playing.value) return
+    const before = takeSnapshot()
+    if (!before) return
+    gesture = { label, before, beforeSelection: bookmark() }
+  }
+
+  function endGesture(): void {
+    const current = gesture
+    gesture = null
+    if (!current || replaying) return
+    const after = takeSnapshot()
+    if (!after) return
+    // A translate or scale drag should not also rewind the cube's spin.
+    if (engine.tool !== 'rotate') {
+      for (let index = 0; index < current.before.nodes.length; index++) {
+        const next = after.nodes[index]
+        const prev = current.before.nodes[index]
+        if (!next || next.name !== prev.name) continue
+        prev.rotation = [next.rotation[0], next.rotation[1], next.rotation[2]]
+      }
+    }
+    if (sameScene(current.before, after)) return
+    history.push({
+      label: current.label,
+      before: current.before,
+      after,
+      beforeSelection: current.beforeSelection,
+      afterSelection: bookmark(),
+      at: Date.now(),
+    }, false)
+    historyTick.value += 1
+    touch()
+  }
+
+  function clearHistory(): void {
+    gesture = null
+    history.clear()
+    historyTick.value += 1
+  }
+
+  function undo(): void {
+    if (playing.value || engine.controls?.dragging || gesture) return
+    const entry = history.undo()
+    if (!entry) return
+    replaying = true
+    try {
+      engine.restoreHistory(entry.before)
+      applyBookmark(entry.beforeSelection)
+      rememberExpanded()
+    } finally {
+      replaying = false
+    }
+    historyTick.value += 1
+    touch(true)
+  }
+
+  function redo(): void {
+    if (playing.value || engine.controls?.dragging || gesture) return
+    const entry = history.redo()
+    if (!entry) return
+    replaying = true
+    try {
+      engine.restoreHistory(entry.after)
+      applyBookmark(entry.afterSelection)
+      rememberExpanded()
+    } finally {
+      replaying = false
+    }
+    historyTick.value += 1
+    touch(true)
+  }
+
+  function goToHistory(cursor: number): void {
+    if (playing.value || engine.controls?.dragging || gesture) return
+    while (history.appliedCount > cursor) {
+      if (!history.canUndo) break
+      undo()
+    }
+    while (history.appliedCount < cursor) {
+      if (!history.canRedo) break
+      redo()
+    }
+  }
+
+  function showHistory(): void {
+    bottomCollapsed.value = false
+    bottomTab.value = 'history'
   }
 
   function writeMeta(): void {
@@ -516,6 +733,15 @@ export const useEditorStore = defineStore('editor', () => {
       engine.markDirty()
       sceneDirty.value = true
     })
+    engine.controls?.addEventListener('mouseDown', () => {
+      beginGesture(gestureLabel())
+    })
+    engine.controls?.addEventListener('mouseUp', () => {
+      endGesture()
+    })
+    window.addEventListener('pointerup', () => {
+      if (gesture) endGesture()
+    })
   }
 
   function readTransform(id: string): {
@@ -606,14 +832,16 @@ export const useEditorStore = defineStore('editor', () => {
   function duplicateSelection(): void {
     const id = engine.selectedId
     if (!ready.value || !id) return
-    engine.duplicate(id)
-    const selectedNode = engine.selectedId
-    if (selectedNode) {
-      const next = new Set(expanded.value)
-      next.add(engine.nodes.get(selectedNode)?.parentId ?? selectedNode)
-      expanded.value = next
-    }
-    touch()
+    const name = nodeLabel(id)
+    record(`Duplicate ${name}`, () => {
+      engine.duplicate(id)
+      const selectedNode = engine.selectedId
+      if (selectedNode) {
+        const next = new Set(expanded.value)
+        next.add(engine.nodes.get(selectedNode)?.parentId ?? selectedNode)
+        expanded.value = next
+      }
+    }, { merge: false })
   }
 
   function deleteSelection(): void {
@@ -623,13 +851,17 @@ export const useEditorStore = defineStore('editor', () => {
     }
     const id = engine.selectedId
     if (!ready.value || !id) return
-    engine.deleteNode(id)
-    touch()
+    const name = nodeLabel(id)
+    record(`Delete ${name}`, () => {
+      engine.deleteNode(id)
+    }, { merge: false })
   }
 
   function rename(id: string, name: string): void {
-    engine.rename(id, name)
-    touch()
+    const previous = nodeLabel(id)
+    record(`Rename ${previous}`, () => {
+      engine.rename(id, name)
+    }, { merge: false })
   }
 
   function beginRename(id: string): void {
@@ -640,151 +872,186 @@ export const useEditorStore = defineStore('editor', () => {
 
   function commitRename(id: string, name: string): void {
     if (renamingId.value !== id) return
-    engine.rename(id, name)
+    const previous = nodeLabel(id)
     renamingId.value = null
-    touch()
+    record(`Rename ${previous}`, () => {
+      engine.rename(id, name)
+    }, { merge: false })
   }
 
   function reparent(id: string, parentId: string): void {
-    engine.reparent(id, parentId)
-    touch()
+    record(`Reparent ${nodeLabel(id)}`, () => {
+      engine.reparent(id, parentId)
+    }, { merge: false })
   }
 
   function setPosition(id: string, axis: 'x' | 'y' | 'z', value: number): void {
-    engine.setPosition(id, axis, value)
+    record(`Move ${nodeLabel(id)}`, () => {
+      engine.setPosition(id, axis, value)
+    })
   }
 
   function setRotation(id: string, axis: 'x' | 'y' | 'z', value: number): void {
-    engine.setRotationDegrees(id, axis, value)
+    record(`Rotate ${nodeLabel(id)}`, () => {
+      engine.setRotationDegrees(id, axis, value)
+    })
   }
 
   function setScale(id: string, axis: 'x' | 'y' | 'z', value: number): void {
-    engine.setScale(id, axis, value)
+    record(`Scale ${nodeLabel(id)}`, () => {
+      engine.setScale(id, axis, value)
+    })
   }
 
   function setVisible(id: string, visible: boolean): void {
-    engine.setVisible(id, visible)
-    touch()
+    record(`Visible ${nodeLabel(id)}`, () => {
+      engine.setVisible(id, visible)
+    }, { merge: false })
   }
 
   function setCastShadow(id: string, enabled: boolean): void {
-    engine.setCastShadow(id, enabled)
-    touch()
+    record(`Cast Shadow ${nodeLabel(id)}`, () => {
+      engine.setCastShadow(id, enabled)
+    }, { merge: false })
   }
 
   function setReceiveShadow(id: string, enabled: boolean): void {
-    engine.setReceiveShadow(id, enabled)
-    touch()
+    record(`Receive Shadow ${nodeLabel(id)}`, () => {
+      engine.setReceiveShadow(id, enabled)
+    }, { merge: false })
   }
 
   function setBackground(color: string): void {
-    engine.setBackground(color)
-    touch()
+    record('Background', () => {
+      engine.setBackground(color)
+    })
   }
 
   function setBackgroundIntensity(value: number): void {
-    engine.setBackgroundIntensity(value)
-    touch()
+    record('Background Intensity', () => {
+      engine.setBackgroundIntensity(value)
+    })
   }
 
   function setEnvironmentIntensity(value: number): void {
-    engine.setEnvironmentIntensity(value)
-    touch()
+    record('Environment Intensity', () => {
+      engine.setEnvironmentIntensity(value)
+    })
   }
 
   function setShadows(enabled: boolean): void {
-    engine.setShadows(enabled)
-    touch()
+    record('Shadows', () => {
+      engine.setShadows(enabled)
+    }, { merge: false })
   }
 
   function setShadowType(name: ShadowTypeName): void {
-    engine.setShadowType(name)
-    touch()
+    record('Shadow Type', () => {
+      engine.setShadowType(name)
+    }, { merge: false })
   }
 
   function setGridVisible(visible: boolean): void {
-    engine.setGridVisible(visible)
-    touch()
+    record('Grid Visible', () => {
+      engine.setGridVisible(visible)
+    }, { merge: false })
   }
 
   function setGridSize(value: number): void {
-    engine.setGridSize(value)
-    touch()
+    record('Grid Size', () => {
+      engine.setGridSize(value)
+    })
   }
 
   function setGridDivisions(value: number): void {
-    engine.setGridDivisions(value)
-    touch()
+    record('Grid Divisions', () => {
+      engine.setGridDivisions(value)
+    })
   }
 
   function setGridCenter(color: string): void {
-    engine.setGridCenter(color)
-    touch()
+    record('Grid Center', () => {
+      engine.setGridCenter(color)
+    })
   }
 
   function setGridColor(color: string): void {
-    engine.setGridColor(color)
-    touch()
+    record('Grid Cell', () => {
+      engine.setGridColor(color)
+    })
   }
 
   function setGridPosition(axis: 'x' | 'y' | 'z', value: number): void {
-    engine.setGridPosition(axis, value)
-    touch()
+    record('Grid Position', () => {
+      engine.setGridPosition(axis, value)
+    })
   }
 
   function resetGrid(field: 'visible' | 'size' | 'divisions' | 'center' | 'color' | 'position'): void {
-    engine.resetGrid(field)
-    touch()
+    record('Reset Grid', () => {
+      engine.resetGrid(field)
+    }, { merge: false })
   }
 
   function resetScene(field: 'background' | 'backgroundIntensity' | 'environmentIntensity' | 'shadows' | 'shadowType'): void {
-    engine.resetScene(field)
-    touch()
+    record('Reset Scene', () => {
+      engine.resetScene(field)
+    }, { merge: false })
   }
 
   function setGeometryType(id: string, type: GeometryType): void {
-    engine.setGeometryType(id, type)
-    touch()
+    record(`Geometry ${nodeLabel(id)}`, () => {
+      engine.setGeometryType(id, type)
+    }, { merge: false })
   }
 
   function setGeometryParam(id: string, key: string, value: number): void {
-    engine.setGeometryParam(id, key, value)
-    touch()
+    record(`Geometry ${nodeLabel(id)} ${key}`, () => {
+      engine.setGeometryParam(id, key, value)
+    })
   }
 
   function resetGeometryType(id: string): void {
-    engine.resetGeometryType(id)
-    touch()
+    record(`Reset Geometry ${nodeLabel(id)}`, () => {
+      engine.resetGeometryType(id)
+    }, { merge: false })
   }
 
   function resetGeometryParam(id: string, key: string): void {
-    engine.resetGeometryParam(id, key)
-    touch()
+    record(`Reset ${key}`, () => {
+      engine.resetGeometryParam(id, key)
+    }, { merge: false })
   }
 
   function setLightColor(id: string, color: string, which: 'color' | 'ground' = 'color'): void {
-    engine.setLightColor(id, color, which)
-    touch()
+    const label = which === 'ground' ? `Ground ${nodeLabel(id)}` : `Color ${nodeLabel(id)}`
+    record(label, () => {
+      engine.setLightColor(id, color, which)
+    })
   }
 
   function setLightIntensity(id: string, value: number): void {
-    engine.setLightIntensity(id, value)
-    touch()
+    record(`Energy ${nodeLabel(id)}`, () => {
+      engine.setLightIntensity(id, value)
+    })
   }
 
   function setLightRange(id: string, value: number): void {
-    engine.setLightRange(id, value)
-    touch()
+    record(`Range ${nodeLabel(id)}`, () => {
+      engine.setLightRange(id, value)
+    })
   }
 
   function setSpotAngle(id: string, degrees: number): void {
-    engine.setSpotAngle(id, degrees)
-    touch()
+    record(`Angle ${nodeLabel(id)}`, () => {
+      engine.setSpotAngle(id, degrees)
+    })
   }
 
   function setSpotPenumbra(id: string, value: number): void {
-    engine.setSpotPenumbra(id, value)
-    touch()
+    record(`Penumbra ${nodeLabel(id)}`, () => {
+      engine.setSpotPenumbra(id, value)
+    })
   }
 
   function readLookAt(id: string): { enabled: boolean, x: number, y: number, z: number } | null {
@@ -792,80 +1059,101 @@ export const useEditorStore = defineStore('editor', () => {
   }
 
   function setLookAtEnabled(id: string, enabled: boolean): void {
-    engine.setLookAtEnabled(id, enabled)
-    touch()
+    record(`Look At ${nodeLabel(id)}`, () => {
+      engine.setLookAtEnabled(id, enabled)
+    }, { merge: false })
   }
 
   function setLookAt(id: string, axis: 'x' | 'y' | 'z', value: number): void {
-    engine.setLookAt(id, axis, value)
-    touch()
+    record(`Target ${nodeLabel(id)}`, () => {
+      engine.setLookAt(id, axis, value)
+    })
   }
 
   function resetLookAtEnabled(id: string): void {
-    engine.resetLookAtEnabled(id)
-    touch()
+    record(`Reset Look At ${nodeLabel(id)}`, () => {
+      engine.resetLookAtEnabled(id)
+    }, { merge: false })
   }
 
   function resetLookAt(id: string): void {
-    engine.resetLookAt(id)
-    touch()
+    record(`Reset Target ${nodeLabel(id)}`, () => {
+      engine.resetLookAt(id)
+    }, { merge: false })
   }
 
   function resetLight(id: string, field: 'color' | 'ground' | 'intensity' | 'range' | 'angle' | 'penumbra'): void {
-    engine.resetLight(id, field)
-    touch()
+    record(`Reset ${field} ${nodeLabel(id)}`, () => {
+      engine.resetLight(id, field)
+    }, { merge: false })
   }
 
   function resetTransform(id: string, part: 'pos' | 'rot' | 'scl'): void {
-    engine.resetTransform(id, part)
-    touch()
+    const label = part === 'pos' ? 'Reset Position' : part === 'rot' ? 'Reset Rotation' : 'Reset Scale'
+    record(`${label} ${nodeLabel(id)}`, () => {
+      engine.resetTransform(id, part)
+    }, { merge: false })
   }
 
   function resetVisible(id: string): void {
-    engine.resetVisible(id)
-    touch()
+    record(`Reset Visible ${nodeLabel(id)}`, () => {
+      engine.resetVisible(id)
+    }, { merge: false })
   }
 
   function resetCastShadow(id: string): void {
-    engine.resetCastShadow(id)
-    touch()
+    record(`Reset Cast Shadow ${nodeLabel(id)}`, () => {
+      engine.resetCastShadow(id)
+    }, { merge: false })
   }
 
   function resetReceiveShadow(id: string): void {
-    engine.resetReceiveShadow(id)
-    touch()
+    record(`Reset Receive Shadow ${nodeLabel(id)}`, () => {
+      engine.resetReceiveShadow(id)
+    }, { merge: false })
+  }
+
+  function materialLabel(id: string): string {
+    return engine.materials.get(id)?.name ?? 'Material'
   }
 
   function setMaterialFlags(id: string, patch: { side?: MaterialSide, transparent?: boolean, wireframe?: boolean }): void {
-    engine.setMaterialFlags(id, patch)
-    touch()
+    const part = patch.side ? 'Cull' : patch.transparent !== undefined ? 'Transparent' : 'Wireframe'
+    record(`${part} ${materialLabel(id)}`, () => {
+      engine.setMaterialFlags(id, patch)
+    }, { merge: false })
   }
 
   function setMaterialName(id: string, name: string): void {
-    engine.setMaterialName(id, name)
-    touch()
+    record(`Rename ${materialLabel(id)}`, () => {
+      engine.setMaterialName(id, name)
+    }, { merge: false })
   }
 
   function resetMaterialName(id: string): void {
-    engine.resetMaterialName(id)
-    touch()
+    record(`Reset ${materialLabel(id)}`, () => {
+      engine.resetMaterialName(id)
+    }, { merge: false })
   }
 
   function resetMaterialSource(id: string): void {
-    engine.resetMaterialSource(id)
-    touch(true)
+    record(`Reset ${materialLabel(id)}`, () => {
+      engine.resetMaterialSource(id)
+    }, { material: true, merge: false })
   }
 
   function resetMaterialFlag(id: string, flag: 'side' | 'transparent' | 'wireframe'): void {
-    engine.resetMaterialFlag(id, flag)
-    touch()
+    record(`Reset ${flag} ${materialLabel(id)}`, () => {
+      engine.resetMaterialFlag(id, flag)
+    }, { merge: false })
   }
 
   function applyBoundPreset(presetId: string): void {
     const id = boundMaterialId.value
     if (!id || presetId === 'custom') return
-    engine.applyPreset(id, presetId)
-    touch(true)
+    record(`Preset ${materialLabel(id)}`, () => {
+      engine.applyPreset(id, presetId)
+    }, { material: true, merge: false })
   }
 
   function applyNodePreset(presetId: string): void {
@@ -873,17 +1161,20 @@ export const useEditorStore = defineStore('editor', () => {
     if (!node || presetId === 'custom') return
     const material = engine.materialOf(node.id)
     if (!material) return
-    engine.applyPreset(material.id, presetId)
-    touch(true)
+    record(`Preset ${material.name}`, () => {
+      engine.applyPreset(material.id, presetId)
+    }, { material: true, merge: false })
   }
 
   function onTslChange(source: string): void {
     const id = boundMaterialId.value
     if (!id) return
-    engine.setMaterialSource(id, source)
-    tslPresetId.value = matchingPresetId(source) ?? 'custom'
-    window.clearTimeout(compileTimer)
-    compileTimer = window.setTimeout(() => compileBound(false), 380)
+    record(`Edit ${materialLabel(id)}`, () => {
+      engine.setMaterialSource(id, source)
+      tslPresetId.value = matchingPresetId(source) ?? 'custom'
+      window.clearTimeout(compileTimer)
+      compileTimer = window.setTimeout(() => compileBound(false), 380)
+    })
   }
 
   function compileBound(log: boolean): void {
@@ -915,6 +1206,7 @@ export const useEditorStore = defineStore('editor', () => {
     if (loaded) {
       rememberExpanded()
       selectedComponentId.value = null
+      clearHistory()
     }
     touch(true)
     if (!loaded) bottomTab.value = 'output'
@@ -925,6 +1217,7 @@ export const useEditorStore = defineStore('editor', () => {
     if (opened) {
       rememberExpanded()
       selectedComponentId.value = null
+      clearHistory()
     }
     touch(true)
     if (!opened) bottomTab.value = 'output'
@@ -1019,26 +1312,30 @@ export const useEditorStore = defineStore('editor', () => {
 
   function instanceScene(path: string, parentId?: string | null): void {
     sceneDialog.value = ''
-    const node = engine.instanceScene(path, parentId === undefined ? engine.selectedId : parentId)
-    if (node) {
-      const next = new Set(expanded.value)
-      const walk = (id: string): void => {
-        next.add(id)
-        const current = engine.nodes.get(id)
-        if (!current) return
-        for (const childId of current.childIds) walk(childId)
+    let placed = false
+    record(`Instance ${sceneFileName(path)}`, () => {
+      const node = engine.instanceScene(path, parentId === undefined ? engine.selectedId : parentId)
+      placed = !!node
+      if (node) {
+        const next = new Set(expanded.value)
+        const walk = (id: string): void => {
+          next.add(id)
+          const current = engine.nodes.get(id)
+          if (!current) return
+          for (const childId of current.childIds) walk(childId)
+        }
+        if (node.parentId) next.add(node.parentId)
+        walk(node.id)
+        expanded.value = next
       }
-      if (node.parentId) next.add(node.parentId)
-      walk(node.id)
-      expanded.value = next
-    }
-    touch()
-    if (!node) bottomTab.value = 'output'
+    }, { merge: false })
+    if (!placed) bottomTab.value = 'output'
   }
 
   function makeLocal(id: string): void {
-    engine.makeLocal(id)
-    touch()
+    record(`Make Local ${nodeLabel(id)}`, () => {
+      engine.makeLocal(id)
+    }, { merge: false })
   }
 
   function openCreate(kind: NodeKind = 'MeshInstance3D', presetId?: string): void {
@@ -1079,47 +1376,57 @@ export const useEditorStore = defineStore('editor', () => {
   }
 
   function attachComponent(resourceId: string, nodeId: string): void {
-    const instance = engine.attachComponent(resourceId, nodeId)
-    if (!instance) {
-      touch()
-      bottomTab.value = 'output'
-      return
-    }
-    const opened = new Set(expanded.value)
-    opened.add(nodeId)
-    expanded.value = opened
-    selectedComponentId.value = instance.id
-    engine.select(nodeId)
-    touch()
-    metaName.value = instance.name
+    const resourceName = engine.components.get(resourceId)?.name ?? 'Component'
+    let failed = false
+    record(`Add ${resourceName}`, () => {
+      const instance = engine.attachComponent(resourceId, nodeId)
+      if (!instance) {
+        failed = true
+        return
+      }
+      const opened = new Set(expanded.value)
+      opened.add(nodeId)
+      expanded.value = opened
+      selectedComponentId.value = instance.id
+      engine.select(nodeId)
+      metaName.value = instance.name
+    }, { merge: false })
+    if (failed) bottomTab.value = 'output'
   }
 
   function moveComponent(instanceId: string, nodeId: string): void {
-    engine.moveComponent(instanceId, nodeId)
-    const opened = new Set(expanded.value)
-    opened.add(nodeId)
-    expanded.value = opened
-    selectedComponentId.value = instanceId
-    engine.select(nodeId)
-    touch()
+    const name = engine.componentInstances.get(instanceId)?.name ?? 'Component'
+    record(`Move ${name}`, () => {
+      engine.moveComponent(instanceId, nodeId)
+      const opened = new Set(expanded.value)
+      opened.add(nodeId)
+      expanded.value = opened
+      selectedComponentId.value = instanceId
+      engine.select(nodeId)
+    }, { merge: false })
   }
 
   function removeComponent(instanceId: string): void {
     const instance = engine.componentInstances.get(instanceId)
-    engine.removeComponent(instanceId)
-    if (selectedComponentId.value === instanceId) selectedComponentId.value = null
-    if (instance) engine.select(instance.nodeId)
-    touch()
+    record(`Remove ${instance?.name ?? 'Component'}`, () => {
+      engine.removeComponent(instanceId)
+      if (selectedComponentId.value === instanceId) selectedComponentId.value = null
+      if (instance) engine.select(instance.nodeId)
+    }, { merge: false })
   }
 
   function setComponentEnabled(instanceId: string, enabled: boolean): void {
-    engine.setComponentEnabled(instanceId, enabled)
-    touch()
+    const name = engine.componentInstances.get(instanceId)?.name ?? 'Component'
+    record(`Enabled ${name}`, () => {
+      engine.setComponentEnabled(instanceId, enabled)
+    }, { merge: false })
   }
 
   function setComponentParameter(instanceId: string, key: string, value: number | string | boolean): void {
-    engine.setComponentParameter(instanceId, key, value)
-    touch()
+    const name = engine.componentInstances.get(instanceId)?.name ?? 'Component'
+    record(`${name} ${key}`, () => {
+      engine.setComponentParameter(instanceId, key, value)
+    })
   }
 
   function addComponentToSelection(resourceId: string): void {
@@ -1258,49 +1565,51 @@ export const useEditorStore = defineStore('editor', () => {
   function createFromDraft(draft: CreateDraft): string | null {
     if (!ready.value) return 'Editor is not ready.'
     const parentId = engine.selectedId
-    try {
-      if (draft.kind === 'Node3D') {
-        engine.createNode3D(parentId, draft.name)
-      } else if (draft.kind === 'MeshInstance3D') {
-        engine.createMesh({
-          name: draft.name,
-          parentId,
-          geometryType: draft.geometryType,
-          params: { ...draft.params },
-          source: draft.source,
-          flags: { ...DEFAULT_FLAGS },
-        })
-      } else {
-        engine.createLight({
-          kind: draft.kind,
-          name: draft.name,
-          parentId,
-          color: draft.color,
-          intensity: draft.intensity,
-          range: draft.range,
-          angle: draft.angle,
-          penumbra: draft.penumbra,
-          groundColor: draft.ground,
-        })
+    let message: string | null = null
+    record(`Create ${draft.name.trim() || 'Node'}`, () => {
+      try {
+        if (draft.kind === 'Node3D') {
+          engine.createNode3D(parentId, draft.name)
+        } else if (draft.kind === 'MeshInstance3D') {
+          engine.createMesh({
+            name: draft.name,
+            parentId,
+            geometryType: draft.geometryType,
+            params: { ...draft.params },
+            source: draft.source,
+            flags: { ...DEFAULT_FLAGS },
+          })
+        } else {
+          engine.createLight({
+            kind: draft.kind,
+            name: draft.name,
+            parentId,
+            color: draft.color,
+            intensity: draft.intensity,
+            range: draft.range,
+            angle: draft.angle,
+            penumbra: draft.penumbra,
+            groundColor: draft.ground,
+          })
+        }
+        const created = engine.selectedId
+        if (created) {
+          const next = new Set(expanded.value)
+          const parent = engine.nodes.get(created)?.parentId
+          if (parent) next.add(parent)
+          next.add(created)
+          expanded.value = next
+        }
+        createOpen.value = false
+        bottomTab.value = 'tsl'
+        return `Create ${nodeLabel(engine.selectedId)}`
+      } catch (error) {
+        message = error instanceof Error ? error.message : String(error)
+        engine.log(message, 'error')
       }
-      const created = engine.selectedId
-      if (created) {
-        const next = new Set(expanded.value)
-        const parent = engine.nodes.get(created)?.parentId
-        if (parent) next.add(parent)
-        next.add(created)
-        expanded.value = next
-      }
-      createOpen.value = false
-      bottomTab.value = 'tsl'
-      touch(true)
-      return null
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      engine.log(message, 'error')
-      touch()
-      return message
-    }
+    }, { material: true, merge: false })
+    if (message) bottomTab.value = 'output'
+    return message
   }
 
   function openHelp(topic: 'tsl' | 'shortcuts'): void {
@@ -1335,10 +1644,11 @@ export const useEditorStore = defineStore('editor', () => {
       bottomTab.value = 'output'
       return
     }
-    if (node.materialId) engine.applyPreset(node.materialId, presetId)
-    else engine.newMaterialFor(node.id, presetId)
-    setScreen('3d')
-    touch(true)
+    record(`Preset ${node.name}`, () => {
+      if (node.materialId) engine.applyPreset(node.materialId, presetId)
+      else engine.newMaterialFor(node.id, presetId)
+      setScreen('3d')
+    }, { material: true, merge: false })
   }
 
   function closePopups(): void {
@@ -1365,6 +1675,9 @@ export const useEditorStore = defineStore('editor', () => {
     const locked = !current || current.isRoot
     if (name === 'Scene') {
       return [
+        { label: 'Undo', shortcut: 'Ctrl+Z', disabled: !canUndo.value, action: () => undo() },
+        { label: 'Redo', shortcut: 'Ctrl+Shift+Z', disabled: !canRedo.value, action: () => redo() },
+        { separator: true, label: '', action: () => {} },
         { label: 'Save Scene', shortcut: 'Ctrl+Shift+S', action: () => saveOpenScene() },
         { label: 'Save Scene As…', shortcut: 'Ctrl+Alt+S', action: () => openSaveAs() },
         { label: 'Instance Scene…', shortcut: 'Ctrl+Shift+A', disabled: instanceChoices.value.length === 0, action: () => openInstanceDialog() },
@@ -1388,6 +1701,7 @@ export const useEditorStore = defineStore('editor', () => {
     }
     if (name === 'Editor') {
       return [
+        { label: 'History', action: () => showHistory() },
         { label: 'Bottom Panel', action: () => { bottomCollapsed.value = !bottomCollapsed.value } },
         { label: 'Distraction Free Mode', action: () => { distraction.value = !distraction.value } },
       ]
@@ -1436,8 +1750,9 @@ export const useEditorStore = defineStore('editor', () => {
     const items: MenuItem[] = GEOMETRY_CATALOG.map((entry) => ({
       label: `New ${entry.label}`,
       action: () => {
-        engine.newGeometryFor(nodeId, entry.type)
-        touch()
+        record(`Geometry ${nodeLabel(nodeId)}`, () => {
+          engine.newGeometryFor(nodeId, entry.type)
+        }, { merge: false })
       },
     }))
     const current = engine.geometryOf(nodeId)
@@ -1446,8 +1761,9 @@ export const useEditorStore = defineStore('editor', () => {
       items.push({
         label: 'Make Unique',
         action: () => {
-          engine.makeGeometryUnique(nodeId)
-          touch()
+          record(`Unique Geometry ${nodeLabel(nodeId)}`, () => {
+            engine.makeGeometryUnique(nodeId)
+          }, { merge: false })
         },
       })
       for (const resource of engine.geometries.values()) {
@@ -1455,8 +1771,9 @@ export const useEditorStore = defineStore('editor', () => {
         items.push({
           label: resource.name,
           action: () => {
-            engine.assignGeometry(nodeId, resource.id)
-            touch()
+            record(`Geometry ${nodeLabel(nodeId)}`, () => {
+              engine.assignGeometry(nodeId, resource.id)
+            }, { merge: false })
           },
         })
       }
@@ -1468,9 +1785,10 @@ export const useEditorStore = defineStore('editor', () => {
     const items: MenuItem[] = TSL_PRESETS.map((preset) => ({
       label: `New ${preset.name}`,
       action: () => {
-        engine.newMaterialFor(nodeId, preset.id)
-        bottomTab.value = 'tsl'
-        touch(true)
+        record(`Material ${nodeLabel(nodeId)}`, () => {
+          engine.newMaterialFor(nodeId, preset.id)
+          bottomTab.value = 'tsl'
+        }, { material: true, merge: false })
       },
     }))
     const current = engine.materialOf(nodeId)
@@ -1479,8 +1797,9 @@ export const useEditorStore = defineStore('editor', () => {
       items.push({
         label: 'Make Unique',
         action: () => {
-          engine.makeMaterialUnique(nodeId)
-          touch(true)
+          record(`Unique Material ${nodeLabel(nodeId)}`, () => {
+            engine.makeMaterialUnique(nodeId)
+          }, { material: true, merge: false })
         },
       })
       for (const resource of engine.materials.values()) {
@@ -1488,8 +1807,9 @@ export const useEditorStore = defineStore('editor', () => {
         items.push({
           label: resource.name,
           action: () => {
-            engine.assignMaterial(nodeId, resource.id)
-            touch(true)
+            record(`Material ${nodeLabel(nodeId)}`, () => {
+              engine.assignMaterial(nodeId, resource.id)
+            }, { material: true, merge: false })
           },
         })
       }
@@ -1544,6 +1864,21 @@ export const useEditorStore = defineStore('editor', () => {
     }
     if (typing || createOpen.value || componentOpen.value || helpTopic.value || sceneDialog.value) return
     const key = event.key.toLowerCase()
+    if ((event.ctrlKey || event.metaKey) && event.shiftKey && key === 'z') {
+      event.preventDefault()
+      redo()
+      return
+    }
+    if ((event.ctrlKey || event.metaKey) && key === 'z') {
+      event.preventDefault()
+      undo()
+      return
+    }
+    if ((event.ctrlKey || event.metaKey) && key === 'y') {
+      event.preventDefault()
+      redo()
+      return
+    }
     if ((event.ctrlKey || event.metaKey) && event.shiftKey && key === 'a') {
       event.preventDefault()
       openInstanceDialog()
@@ -1645,6 +1980,12 @@ export const useEditorStore = defineStore('editor', () => {
     sceneDialogPath,
     sceneDialogError,
     sceneSaveAsReplaces,
+    canUndo,
+    canRedo,
+    undoTitle,
+    redoTitle,
+    historyEntries,
+    historyCursor,
     metaName,
     metaTris,
     nodes,
@@ -1774,6 +2115,10 @@ export const useEditorStore = defineStore('editor', () => {
     openMaterialMenu,
     onKeyDown,
     onPointerDown,
+    undo,
+    redo,
+    goToHistory,
+    showHistory,
   }
 })
 

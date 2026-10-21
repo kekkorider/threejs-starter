@@ -106,6 +106,7 @@
   border-color: #2c4f7a;
 }
 .icon-btn.danger:hover { color: var(--danger); }
+.icon-btn:disabled:hover { background: transparent; color: var(--font-dim); }
 
 .screens {
   display: flex;
@@ -184,7 +185,7 @@
 }
 .filter:focus { border-color: var(--accent); }
 
-.tree, .inspector, .output, .files {
+.tree, .inspector, .output, .files, .history {
   overflow: auto;
   min-height: 0;
   flex: 1;
@@ -383,7 +384,28 @@
 .bottom-tab.active { color: white; background: #3a3a3a; box-shadow: inset 0 -2px 0 var(--accent); }
 .bottom-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .bottom-body[data-tab="output"] .tsl-pane,
-.bottom-body[data-tab="tsl"] .output { display: none; }
+.bottom-body[data-tab="output"] .history,
+.bottom-body[data-tab="tsl"] .output,
+.bottom-body[data-tab="tsl"] .history,
+.bottom-body[data-tab="history"] .tsl-pane,
+.bottom-body[data-tab="history"] .output { display: none; }
+.history-row {
+  width: 100%;
+  display: block;
+  height: 22px;
+  padding: 0 10px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  color: var(--font);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.history-row.future { color: var(--font-mute); }
+.history-row.current { background: rgba(86, 158, 255, 0.28); color: white; }
+.history-row:hover { background: rgba(255, 255, 255, 0.06); }
+.history-row.current:hover { background: rgba(86, 158, 255, 0.4); }
 .editor.bottom-collapsed { --bottom: 28px; }
 .editor.bottom-collapsed .bottom-body,
 .editor.bottom-collapsed .center-body > .splitter.y { display: none; }

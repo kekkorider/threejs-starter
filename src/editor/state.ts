@@ -23,6 +23,7 @@ import {
   geometryEntry,
   type GeometryType,
 } from './geometry'
+import { fingerprint } from './history'
 import { attachLightArrow, attachLightIcon, disposeLightArrow, disposeLightIcon, type LightIconKind } from './lightIcons'
 import {
   hasSceneFile,
@@ -254,6 +255,8 @@ export class EditorState {
   /** True after an edit that Save Scene has not written yet. */
   sceneDirty = false
 
+  /** Fingerprint of the scene last saved or loaded. Null until that happens. */
+  private cleanCapture: string | null = null
   private attached = false
   /** Save and load mutate the tree without counting as a new edit. */
   private restoring = false
@@ -338,9 +341,15 @@ export class EditorState {
     const helper = this.controls.getHelper()
     helper.userData.editorHidden = true
     scene.add(helper)
-    this.controls.addEventListener('dragging-changed', (event) => {
-      const dragging = Boolean((event as { value?: boolean }).value)
-      starter.ctx.modules.orbitControls.controls.enabled = !dragging
+    const orbit = () => starter.ctx.modules.orbitControls.controls
+    this.controls.addEventListener('mouseDown', () => {
+      orbit().enabled = false
+    })
+    this.controls.addEventListener('mouseUp', () => {
+      orbit().enabled = true
+    })
+    window.addEventListener('pointerup', () => {
+      orbit().enabled = true
     })
 
     this.installEnvironment(renderer)
@@ -359,6 +368,7 @@ export class EditorState {
     if (saved) {
       try {
         this.applyScene(saved)
+        this.rememberClean()
         this.log(`Loaded ${saved.path}`)
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
@@ -387,6 +397,7 @@ export class EditorState {
     }
     const file = this.captureScene()
     writeSceneFile(file)
+    this.cleanCapture = fingerprint(file)
     this.sceneDirty = false
     this.log(`Saved ${file.path}`)
     return true
@@ -404,6 +415,7 @@ export class EditorState {
       return false
     }
     this.applyScene(file)
+    this.rememberClean()
     this.log(`Loaded ${file.path}`)
     return true
   }
@@ -439,6 +451,7 @@ export class EditorState {
     this.scenePath = path
     try {
       this.applyScene(file)
+      this.rememberClean()
     } catch (error) {
       this.scenePath = previous
       const message = error instanceof Error ? error.message : String(error)
@@ -1413,6 +1426,22 @@ export class EditorState {
     this.sceneDirty = true
   }
 
+  private rememberClean(): void {
+    this.cleanCapture = fingerprint(this.captureScene())
+    this.sceneDirty = false
+  }
+
+  /** Scene file the history stack can restore later. */
+  captureHistory(): SceneFile {
+    return this.captureScene()
+  }
+
+  /** Replace the open scene with a history snapshot and keep the saved-file baseline. */
+  restoreHistory(file: SceneFile): void {
+    this.applyScene(file, true)
+    this.sceneDirty = this.cleanCapture === null || fingerprint(file) !== this.cleanCapture
+  }
+
   private captureScene(): SceneFile {
     const geometries: SceneGeometryRecord[] = []
     const materials: SceneMaterialRecord[] = []
@@ -1559,7 +1588,7 @@ export class EditorState {
     }
   }
 
-  private applyScene(file: SceneFile): void {
+  private applyScene(file: SceneFile, preserveNames = false): void {
     const root = this.nodes.get(this.rootId)
     if (!root) throw new Error('Scene root is missing.')
     this.restoring = true
@@ -1618,7 +1647,7 @@ export class EditorState {
           this.log(`Skipped ${record.name}: its parent is missing from the scene file.`, 'warn')
           continue
         }
-        const created = this.spawnRecord(record, parentRuntime, geoMap, matMap)
+        const created = this.spawnRecord(record, parentRuntime, geoMap, matMap, new Set(), preserveNames)
         runtime.set(record.id, created.id)
       }
       this.select(this.rootId)
@@ -1634,6 +1663,7 @@ export class EditorState {
     geoMap: Map<string, string>,
     matMap: Map<string, string>,
     stack: Set<string> = new Set(),
+    preserveNames = false,
   ): EditorNode {
     const parent = this.nodes.get(parentId)
     if (!parent) throw new Error('Parent is missing.')
@@ -1683,7 +1713,8 @@ export class EditorState {
       object = new THREE.Group()
     }
 
-    object.name = this.uniqueName(record.name.trim() || NODE_LABEL[record.kind])
+    const rawName = record.name.trim() || NODE_LABEL[record.kind]
+    object.name = preserveNames ? rawName : this.uniqueName(rawName)
     object.position.set(record.position[0], record.position[1], record.position[2])
     object.rotation.set(
       THREE.MathUtils.degToRad(record.rotation[0]),
