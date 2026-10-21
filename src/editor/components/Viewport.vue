@@ -20,16 +20,18 @@ useMountedScene(
   <div class="viewport-wrap">
     <div ref="host" class="viewport" />
     <ViewportToolbar />
-    <div
-      v-if="store.marquee"
-      class="selection-marquee"
-      :style="{
-        left: `${store.marquee.x}px`,
-        top: `${store.marquee.y}px`,
-        width: `${store.marquee.width}px`,
-        height: `${store.marquee.height}px`,
-      }"
-    />
+    <Teleport to="body">
+      <div
+        v-if="store.marquee"
+        class="selection-marquee"
+        :style="{
+          left: `${store.marquee.x}px`,
+          top: `${store.marquee.y}px`,
+          width: `${store.marquee.width}px`,
+          height: `${store.marquee.height}px`,
+        }"
+      />
+    </Teleport>
     <div v-if="store.shading === 'debug'" class="debug-legend">
       <span>Color</span>
       <span>Depth</span>

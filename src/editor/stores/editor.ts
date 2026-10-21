@@ -862,10 +862,9 @@ export const useEditorStore = defineStore('editor', () => {
       const dy = event.clientY - originY
       if (!boxed && Math.hypot(dx, dy) <= 5) return
       boxed = true
-      const rect = canvas.getBoundingClientRect()
       marquee.value = {
-        x: Math.min(event.clientX, originX) - rect.left,
-        y: Math.min(event.clientY, originY) - rect.top,
+        x: Math.min(event.clientX, originX),
+        y: Math.min(event.clientY, originY),
         width: Math.abs(dx),
         height: Math.abs(dy),
       }

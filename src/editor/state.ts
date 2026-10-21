@@ -3160,6 +3160,7 @@ export class EditorState {
       helper.userData.editorHidden = true
       helper.visible = false
       helper.frustumCulled = false
+      helper.renderOrder = 999
       helper.raycast = () => {}
       scene.add(helper)
       this.selectionHelpers.push(helper)
@@ -3171,7 +3172,10 @@ export class EditorState {
     const materials = Array.isArray(helper.material) ? helper.material : [helper.material]
     const color = active ? 0x569eff : 0x8eacd4
     for (const material of materials) {
-      if (material instanceof THREE.LineBasicMaterial) material.color.setHex(color)
+      if (!(material instanceof THREE.LineBasicMaterial)) continue
+      material.color.setHex(color)
+      material.depthTest = false
+      material.transparent = true
     }
   }
 
