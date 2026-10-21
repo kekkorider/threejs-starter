@@ -49,6 +49,12 @@ onBeforeUnmount(() => {
   <section class="dock scene-dock">
     <div class="dock-title">Scene</div>
     <div class="dock-tools">
+      <button type="button" class="icon-btn" :title="store.undoTitle" :disabled="!store.canUndo" @click="store.undo()">
+        <Icon name="back" />
+      </button>
+      <button type="button" class="icon-btn" :title="store.redoTitle" :disabled="!store.canRedo" @click="store.redo()">
+        <Icon name="forward" />
+      </button>
       <button type="button" class="icon-btn" title="Add Child Node (Ctrl+A)" @click="store.openCreate()">
         <Icon name="add" />
       </button>

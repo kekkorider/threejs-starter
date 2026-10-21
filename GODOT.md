@@ -78,13 +78,15 @@ When a feature lands, move it from **Not yet** into **Already in place**. Do not
 - Apply writes the open TypeScript file and stays disabled until the source changes. Enter keeps the current indentation. The Applied label fades out after a second.
 - The inspector edits a component's parameters, such as Spin's axis and speed.
 
+### History
+
+- Undo and redo for inspector edits, transforms, create, delete, and reparent. Ctrl+Z undoes. Ctrl+Shift+Z and Ctrl+Y redo. Scene → Undo and Scene → Redo, and the back and forward buttons on the Scene dock, do the same.
+- The History panel lists each step. Pick one to jump back or forward. A gizmo drag, a number scrub, or a color drag is a single step.
+- Duplicate, instancing, Make Local, and adding, moving, or removing a component are steps too. Loading or opening a scene clears the list.
+
 ## Not yet
 
 Build these in an order that keeps the editor usable. A half-wired Godot feature is worse than leaving it off.
-
-### History
-
-- Undo and redo for inspector edits, transforms, create, delete, and reparent.
 
 ### Nodes still missing
 

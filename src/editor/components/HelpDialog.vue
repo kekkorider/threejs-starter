@@ -6,7 +6,10 @@ import { TSL_HELP } from '../tsl'
 
 const store = useEditorStore()
 
-const shortcuts = `Ctrl+A   Create node
+const shortcuts = `Ctrl+Z        Undo
+Ctrl+Shift+Z  Redo
+Ctrl+Y        Redo
+Ctrl+A   Create node
 Ctrl+C   Create component
 Ctrl+D   Duplicate
 Ctrl+S        Apply TSL
