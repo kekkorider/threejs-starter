@@ -107,7 +107,7 @@ export function attachSpotCone(object: THREE.Object3D): void {
   if (object.getObjectByName('SpotCone')) return
   const material = new THREE.LineBasicNodeMaterial({
     color: object instanceof THREE.SpotLight ? object.color : 0xff8a3d,
-    depthTest: true,
+    depthTest: false,
     depthWrite: false,
     toneMapped: false,
     fog: false,
