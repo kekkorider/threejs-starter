@@ -230,12 +230,12 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.tree-row .kind-icon.node, .file-row .node { color: var(--node); }
-.tree-row .kind-icon.mesh, .file-row .mesh { color: var(--mesh); }
-.tree-row .kind-icon.light, .file-row .light { color: var(--light); }
-.tree-row .kind-icon.camera, .file-row .camera, .node-head .kind-icon.camera { color: var(--camera); }
+.tree-row .kind-icon.node, .file-row .node, .menu-item .kind-icon.node { color: var(--node); }
+.tree-row .kind-icon.mesh, .file-row .mesh, .menu-item .kind-icon.mesh { color: var(--mesh); }
+.tree-row .kind-icon.light, .file-row .light, .menu-item .kind-icon.light { color: var(--light); }
+.tree-row .kind-icon.camera, .file-row .camera, .node-head .kind-icon.camera, .menu-item .kind-icon.camera { color: var(--camera); }
 .tree-row .kind-icon.component, .file-row .component, .node-head .kind-icon.component { color: #7ec8e3; }
-.tree-row .kind-icon.scene, .file-row .scene { color: #7aa2ff; }
+.tree-row .kind-icon.scene, .file-row .scene, .menu-item .kind-icon.scene { color: #7aa2ff; }
 .tree-row .kind-icon .ico, .file-row .ico { width: 14px; height: 14px; display: block; -webkit-user-drag: none; }
 .file-row .kind-icon { pointer-events: none; }
 .file-row[draggable='true'] { -webkit-user-drag: element; }
@@ -621,6 +621,8 @@
   position: fixed;
   z-index: 30;
   min-width: 220px;
+  max-height: calc(100vh - 16px);
+  overflow: auto;
   background: #2c2c2c;
   border: 1px solid #151515;
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
@@ -640,6 +642,9 @@
   text-align: left;
   color: var(--font);
 }
+.menu-label { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.menu-item .kind-icon { width: 16px; height: 16px; display: grid; place-items: center; flex: none; }
+.menu-item .kind-icon .ico { width: 14px; height: 14px; }
 .menu-item:hover, .context-menu button:hover { background: var(--accent); color: white; }
 .menu-item:hover .shortcut, .menu-item .shortcut { color: var(--font-mute); }
 .menu-item:hover .shortcut { color: white; }

@@ -13,7 +13,8 @@ import {
 } from '../camera'
 import { GEOMETRY_CATALOG, triangleCount, type GeometryType } from '../geometry'
 import type { NodeKind, ToolMode } from '../state'
-import { EditorState, NODE_TYPES, type EditorNode, type GridSettings, type LogLine, type SceneSettings, type ShadowTypeName } from '../state'
+import { EditorState, NODE_LABEL, NODE_TYPES, type EditorNode, type GridSettings, type LogLine, type SceneSettings, type ShadowTypeName } from '../state'
+import { kindClass, kindIcon } from '../lib/format'
 import type { ComponentParameter } from '../behaviors'
 import { EditorHistory, sameScene, type HistoryRow, type SelectionBookmark } from '../history'
 import { hasSceneFile, normalizeScenePath, readSceneLibrary, sceneFileName, type SceneFile } from '../sceneFile'
@@ -27,6 +28,9 @@ export interface MenuItem {
   shortcut?: string
   disabled?: boolean
   separator?: boolean
+  icon?: string
+  iconClass?: string
+  title?: string
   action: () => void
 }
 
@@ -838,8 +842,27 @@ export const useEditorStore = defineStore('editor', () => {
       tracking = false
     }
 
+    let rightX = 0
+    let rightY = 0
+    let rightDown = false
+    let menuTicket = 0
+    const scheduleNodes = (clientX: number, clientY: number, shift: boolean, ctrl: boolean): void => {
+      const ticket = ++menuTicket
+      window.setTimeout(() => {
+        if (ticket !== menuTicket) return
+        openViewportNodes(clientX, clientY, shift, ctrl)
+      }, 0)
+    }
+
     canvas.addEventListener('pointerdown', (event) => {
-      gizmoPointer = engine.tool !== 'select' && Boolean(engine.controls?.dragging || engine.controls?.axis)
+      menuTicket += 1
+      gizmoPointer = engine.tool !== 'select' && engine.tool !== 'list' && Boolean(engine.controls?.dragging || engine.controls?.axis)
+      if (event.button === 2) {
+        rightX = event.clientX
+        rightY = event.clientY
+        rightDown = true
+        return
+      }
       if (event.button !== 0) return
       originX = event.clientX
       originY = event.clientY
@@ -870,6 +893,15 @@ export const useEditorStore = defineStore('editor', () => {
       }
     })
     canvas.addEventListener('pointerup', (event) => {
+      if (event.button === 2) {
+        const moved = rightDown ? Math.hypot(event.clientX - rightX, event.clientY - rightY) : Infinity
+        rightDown = false
+        const editing = engine.chromeVisible && !engine.playing && screen.value !== 'game'
+        if (editing && event.altKey && moved <= 5 && !engine.controls?.dragging) {
+          scheduleNodes(event.clientX, event.clientY, event.shiftKey, event.ctrlKey || event.metaKey)
+        }
+        return
+      }
       const wasBoxed = boxed
       const rect = canvas.getBoundingClientRect()
       if (!engine.chromeVisible || event.button !== 0 || gizmoPointer || engine.playing || screen.value === 'game') {
@@ -890,6 +922,10 @@ export const useEditorStore = defineStore('editor', () => {
       clearMarquee()
       if (Math.hypot(event.clientX - originX, event.clientY - originY) > 5) return
       if (rect.width < 1 || rect.height < 1) return
+      if (engine.tool === 'list') {
+        scheduleNodes(event.clientX, event.clientY, event.shiftKey, event.ctrlKey || event.metaKey)
+        return
+      }
       const x = ((event.clientX - rect.left) / rect.width) * 2 - 1
       const y = -((event.clientY - rect.top) / rect.height) * 2 + 1
       selectPicked(engine.pick(x, y), event.shiftKey, event.ctrlKey || event.metaKey)
@@ -1927,6 +1963,54 @@ export const useEditorStore = defineStore('editor', () => {
     ]
   }
 
+  function nodePath(id: string): string {
+    const parts: string[] = []
+    let current: string | null = id
+    const seen = new Set<string>()
+    while (current && !seen.has(current)) {
+      seen.add(current)
+      const node = engine.nodes.get(current)
+      if (!node) break
+      parts.push(node.name)
+      current = node.parentId
+    }
+    return `/${parts.reverse().join('/')}`
+  }
+
+  /** Godot's list of nodes under the cursor. One node is selected. Several open a menu. */
+  function openViewportNodes(clientX: number, clientY: number, shift: boolean, ctrl: boolean): void {
+    if (!engine.chromeVisible || engine.playing || screen.value === 'game') return
+    const canvas = engine.starter?.ctx.renderer.domElement
+    if (!canvas) return
+    const rect = canvas.getBoundingClientRect()
+    if (rect.width < 1 || rect.height < 1) return
+    const x = ((clientX - rect.left) / rect.width) * 2 - 1
+    const y = -((clientY - rect.top) / rect.height) * 2 + 1
+    const ids = engine.nodesAt(x, y)
+    if (ids.length === 0) return
+    if (ids.length === 1) {
+      selectPicked(ids[0], shift, ctrl)
+      return
+    }
+    const names = ids.map((id) => engine.nodes.get(id)?.name ?? '')
+    const items: MenuItem[] = []
+    for (const id of ids) {
+      const node = engine.nodes.get(id)
+      if (!node) continue
+      const parent = node.parentId ? engine.nodes.get(node.parentId)?.name : ''
+      const shared = names.filter((name) => name === node.name).length > 1
+      items.push({
+        label: shared && parent ? `${node.name} (${parent})` : node.name,
+        icon: node.instancePath ? 'scene' : kindIcon(node.kind),
+        iconClass: node.instancePath ? 'scene' : kindClass(node.kind),
+        title: `${node.name}\nType: ${NODE_LABEL[node.kind]}\nPath: ${nodePath(id)}`,
+        action: () => selectPicked(id, shift, ctrl),
+      })
+    }
+    if (items.length === 0) return
+    showPopup(new DOMRect(clientX, clientY, 0, 0), items, false)
+  }
+
   function openContextMenu(id: string, x: number, y: number): void {
     if (!engine.selectedIds.includes(id)) select(id)
     else {
@@ -2080,6 +2164,10 @@ export const useEditorStore = defineStore('editor', () => {
       }
       if (helpTopic.value) {
         helpTopic.value = ''
+        return
+      }
+      if (popup.value) {
+        closePopups()
         return
       }
     }

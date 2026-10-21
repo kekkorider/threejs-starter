@@ -9,7 +9,14 @@ const tools: { id: ToolMode, icon: string, label: string, key: string }[] = [
   { id: 'translate', icon: 'move', label: 'Move', key: 'W' },
   { id: 'rotate', icon: 'rotate', label: 'Rotate', key: 'E' },
   { id: 'scale', icon: 'scale', label: 'Scale', key: 'R' },
+  { id: 'list', icon: 'list-select', label: 'List', key: '' },
 ]
+
+function toolTitle(item: { id: ToolMode, label: string, key: string }): string {
+  if (item.id === 'select') return 'Select (Q). Drag a rectangle to box-select. Shift adds, Ctrl toggles.'
+  if (item.id === 'list') return 'Show list of selectable nodes at the clicked position. One node is selected. Several open a menu. Alt+right-click does this in any mode.'
+  return `${item.label} (${item.key})`
+}
 
 function onView(event: Event): void {
   store.setView((event.target as HTMLSelectElement).value as 'persp' | 'top' | 'front' | 'right')
@@ -29,7 +36,7 @@ function onShading(event: Event): void {
         type="button"
         class="tool-btn"
         :class="{ active: store.tool === item.id }"
-        :title="item.id === 'select' ? 'Select (Q). Drag a rectangle to box-select. Shift adds, Ctrl toggles.' : `${item.label} (${item.key})`"
+        :title="toolTitle(item)"
         @click="store.setTool(item.id)"
       >
         <Icon :name="item.icon" />

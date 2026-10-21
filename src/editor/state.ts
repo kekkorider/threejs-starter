@@ -77,7 +77,7 @@ export type NodeKind =
   | 'SpotLight3D'
   | 'HemisphereLight3D'
 
-export type ToolMode = 'select' | 'translate' | 'rotate' | 'scale'
+export type ToolMode = 'select' | 'list' | 'translate' | 'rotate' | 'scale'
 export type ShadingMode = 'shaded' | 'debug'
 
 export interface LookAtConfig {
@@ -207,7 +207,7 @@ export interface CreateLightOptions {
   groundColor?: string
 }
 
-const NODE_LABEL: Record<NodeKind, string> = {
+export const NODE_LABEL: Record<NodeKind, string> = {
   Node3D: 'Node',
   MeshInstance3D: 'MeshInstance',
   Camera3D: 'Camera',
@@ -799,7 +799,7 @@ export class EditorState {
 
   setTool(tool: ToolMode): void {
     this.tool = tool
-    if (this.controls && tool !== 'select') this.controls.setMode(tool)
+    if (this.controls && tool !== 'select' && tool !== 'list') this.controls.setMode(tool)
     this.syncOrbitMouse()
     this.syncGizmo()
     this.updateSelectionBox()
@@ -1661,26 +1661,38 @@ export class EditorState {
   }
 
   pick(ndcX: number, ndcY: number): string | null {
+    return this.rayHits(ndcX, ndcY)[0]?.id ?? null
+  }
+
+  /**
+   * Every node under the cursor, closest first. Meshes and light or camera badges join when the ray meets them.
+   * A light, camera, or empty node also joins when its origin is near the point, so a badge the ray misses can still be chosen.
+   */
+  nodesAt(ndcX: number, ndcY: number): string[] {
+    const canvas = this.starter?.ctx.renderer.domElement
     const camera = this.camera
-    if (!camera) return null
-    const raycaster = new THREE.Raycaster()
-    raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera)
-    const targets: THREE.Object3D[] = []
+    if (!canvas || !camera) return []
+    const rect = canvas.getBoundingClientRect()
+    const width = rect.width
+    const height = rect.height
+    if (width < 1 || height < 1) return []
+    const found = new Map<string, number>()
+    for (const hit of this.rayHits(ndcX, ndcY)) {
+      if (!found.has(hit.id)) found.set(hit.id, hit.distance)
+    }
+    const clickX = (ndcX * 0.5 + 0.5) * width
+    const clickY = (-ndcY * 0.5 + 0.5) * height
+    camera.updateMatrixWorld()
     for (const node of this.nodes.values()) {
-      if (node.object instanceof THREE.Mesh && node.object.visible) targets.push(node.object)
-      const icon = node.object.getObjectByName('LightIcon') ?? node.object.getObjectByName('CameraIcon')
-      if (icon?.visible) targets.push(icon)
+      if (node.isRoot || found.has(node.id) || node.object instanceof THREE.Mesh) continue
+      if (!this.isDrawn(node.object)) continue
+      node.object.updateWorldMatrix(true, false)
+      node.object.getWorldPosition(this.tmp)
+      const distance = camera.position.distanceTo(this.tmp)
+      if (!this.pointHitsMarquee(this.tmp, clickX, clickY, clickX, clickY, width, height)) continue
+      found.set(node.id, distance)
     }
-    const hits = raycaster.intersectObjects(targets, true)
-    for (const hit of hits) {
-      let current: THREE.Object3D | null = hit.object
-      while (current) {
-        const id = current.userData.editorId as string | undefined
-        if (id && this.nodes.has(id)) return id
-        current = current.parent
-      }
-    }
-    return null
+    return [...found.entries()].sort((a, b) => a[1] - b[1]).map(([id]) => id)
   }
 
   /**
@@ -2235,7 +2247,7 @@ export class EditorState {
     const controls = this.controls
     if (!controls) return
     const node = this.selected()
-    if (!node || node.isRoot || this.playing || this.tool === 'select') {
+    if (!node || node.isRoot || this.playing || this.tool === 'select' || this.tool === 'list') {
       controls.detach()
       return
     }
@@ -2247,7 +2259,7 @@ export class EditorState {
     const nodes = this.selectedIds
       .map((id) => this.nodes.get(id))
       .filter((node): node is EditorNode => Boolean(node && !node.isRoot))
-    const show = nodes.length > 0 && !this.playing && this.chromeVisible && (this.tool === 'select' || nodes.length > 1)
+    const show = nodes.length > 0 && !this.playing && this.chromeVisible && (this.selectionTool() || nodes.length > 1)
     if (!show) {
       for (const helper of this.selectionHelpers) helper.visible = false
       return
@@ -3017,8 +3029,8 @@ export class EditorState {
   private syncOrbitMouse(): void {
     const orbit = this.starter?.ctx.modules.orbitControls.controls
     if (!orbit) return
-    if (this.tool === 'select') {
-      // The rectangle uses the left button. Right-drag orbits, and the wheel still zooms.
+    if (this.selectionTool()) {
+      // The rectangle and the node list use the left button. Right-drag orbits, and the wheel still zooms.
       orbit.mouseButtons.LEFT = null
       orbit.mouseButtons.MIDDLE = THREE.MOUSE.PAN
       orbit.mouseButtons.RIGHT = THREE.MOUSE.ROTATE
@@ -3177,6 +3189,43 @@ export class EditorState {
       material.depthTest = false
       material.transparent = true
     }
+  }
+
+  /** Select and list pick nodes. Move, rotate, and scale keep the gizmo. */
+  private selectionTool(): boolean {
+    return this.tool === 'select' || this.tool === 'list'
+  }
+
+  private rayHits(ndcX: number, ndcY: number): { id: string, distance: number }[] {
+    const camera = this.camera
+    if (!camera) return []
+    const raycaster = new THREE.Raycaster()
+    raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera)
+    const targets: THREE.Object3D[] = []
+    for (const node of this.nodes.values()) {
+      if (node.isRoot) continue
+      if (node.object instanceof THREE.Mesh && node.object.visible) targets.push(node.object)
+      const icon = node.object.getObjectByName('LightIcon') ?? node.object.getObjectByName('CameraIcon')
+      if (icon?.visible) targets.push(icon)
+    }
+    const hits = raycaster.intersectObjects(targets, true)
+    const found: { id: string, distance: number }[] = []
+    const seen = new Set<string>()
+    for (const hit of hits) {
+      let current: THREE.Object3D | null = hit.object
+      while (current) {
+        const id = current.userData.editorId as string | undefined
+        if (id && this.nodes.has(id)) {
+          if (!seen.has(id)) {
+            seen.add(id)
+            found.push({ id, distance: hit.distance })
+          }
+          break
+        }
+        current = current.parent
+      }
+    }
+    return found
   }
 
   private isDrawn(object: THREE.Object3D): boolean {

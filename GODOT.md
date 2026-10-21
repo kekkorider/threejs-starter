@@ -31,6 +31,7 @@ When a feature lands, move it from **Not yet** into **Already in place**. Do not
 - Move, rotate, and scale gizmos, in world or local space, with optional snapping.
 - Camera views: Perspective, Top, Front, Right.
 - Click to select. Shift-click adds a node, and Ctrl-click toggles it. Shift-click in the scene tree selects the rows from the anchor to the clicked one. Focus frames every selected node.
+- List the nodes under the cursor. The list button on the viewport toolbar opens that menu on click, and Alt+right-click opens it from any tool. One node is selected immediately. Shift adds it, and Ctrl toggles it. A row shows the node name, and its tooltip shows the type and the path. Right-drag orbits in that mode.
 - Select mode drags a selection rectangle. Shift adds the nodes inside it, and Ctrl removes them. Right-drag orbits in that mode. Each selected node draws a box. Move, rotate, and scale transform the whole selection, and Delete and Duplicate do too. The inspector edits the active node, the last one selected.
 - Play, pause, and stop. Play hides the grid, gizmos, and light badges.
 - Orbit controls start aimed at `[0, 0, 0]`.
@@ -107,7 +108,6 @@ Build these in an order that keeps the editor usable. A half-wired Godot feature
 
 ### Viewport
 
-- Viewport menus on a node (Godot's right-click in the 3D view).
 - Preview sun and environment from the viewport, the way Godot previews a DirectionalLight.
 
 ### Inspector

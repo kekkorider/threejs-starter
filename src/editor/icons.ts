@@ -18,6 +18,7 @@ const PATHS: Record<string, string> = {
   delete: `<path d="M3 4.2h10M6.2 4.1V2.8h3.6v1.3M4.4 4.2l.6 9h6l.6-9" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>`,
   search: `<circle cx="7" cy="7" r="3.4" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M9.6 9.6 13 13" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>`,
   select: `<path d="M3.2 2.2 3.4 13l3-2.6 1.8 3.2 1.6-.9-1.8-3.2h3.6L3.2 2.2Z" fill="currentColor"/>`,
+  'list-select': `<path d="M2.1 1.7 2.3 9.6l2-1.7 1.2 2.2 1.15-.65-1.25-2.15h2.5L2.1 1.7Z" fill="currentColor"/><path d="M9.3 6.1h4.6M9.3 8.4h4.6M9.3 10.7h3.2" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round"/>`,
   move: `<path d="M8 1.6v12.8M8 1.6 5.8 3.8M8 1.6l2.2 2.2M8 14.4l-2.2-2.2M8 14.4l2.2-2.2M1.6 8h12.8M1.6 8l2.2-2.2M1.6 8l2.2 2.2M14.4 8l-2.2-2.2M14.4 8l-2.2 2.2" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>`,
   rotate: `<path d="M12.6 6.2A4.8 4.8 0 1 0 13 9.2" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M12.6 3.2v3.2H9.4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>`,
   scale: `<path d="M3 13 13 3M3 13h4M3 13V9M13 3H9M13 3v4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>`,
