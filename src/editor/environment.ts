@@ -1,4 +1,5 @@
 import * as THREE from 'three/webgpu'
+import { color, mix, normalWorldGeometry, smoothstep } from 'three/tsl'
 import type { ShadowTypeName } from './state'
 
 /**
@@ -58,6 +59,29 @@ export interface LegacySceneEnvironment {
   shadows: boolean
   shadowType: ShadowTypeName
   environment?: EnvironmentSettings | null
+}
+
+/**
+ * Godot's default procedural sky: blue zenith, pale horizon, brown ground.
+ * The studio environment map stays on the scene for lighting and reflections.
+ * Drawing that map as the sky reads as the same gray as the default clear color.
+ */
+const SKY_ZENITH = color('#62748c')
+const SKY_HORIZON = color('#a5a7ab')
+const GROUND_BOTTOM = color('#332b22')
+
+function createSkyBackground() {
+  const up = normalWorldGeometry.y
+  const sky = mix(SKY_HORIZON, SKY_ZENITH, smoothstep(0, 0.55, up))
+  const ground = mix(SKY_HORIZON, GROUND_BOTTOM, smoothstep(0, 0.2, up.negate()))
+  return mix(ground, sky, smoothstep(-0.02, 0.08, up))
+}
+
+let skyBackground: ReturnType<typeof createSkyBackground> | null = null
+
+function skyBackgroundNode(): ReturnType<typeof createSkyBackground> {
+  skyBackground ??= createSkyBackground()
+  return skyBackground
 }
 
 const SHADOW_TYPE: Record<ShadowTypeName, THREE.ShadowMapType> = {
@@ -201,18 +225,22 @@ export function applyEnvironmentSettings(
   const hasMap = Boolean(envMap)
   const mode = settings.backgroundMode
 
+  const backgroundEnergy = Math.max(0, settings.backgroundEnergy)
+  scene.backgroundNode = null
   if (mode === 'canvas') {
     scene.background = null
     renderer.setClearAlpha(0)
-  } else if (mode === 'sky' && hasMap && envMap) {
-    scene.background = envMap
+  } else if (mode === 'sky') {
+    scene.background = null
+    scene.backgroundNode = skyBackgroundNode()
     renderer.setClearAlpha(1)
   } else {
-    if (scene.background instanceof THREE.Color) scene.background.set(settings.backgroundColor)
-    else scene.background = new THREE.Color(settings.backgroundColor)
+    const clear = scene.background instanceof THREE.Color ? scene.background : new THREE.Color()
+    clear.set(settings.backgroundColor).multiplyScalar(backgroundEnergy)
+    scene.background = clear
     renderer.setClearAlpha(1)
   }
-  scene.backgroundIntensity = Math.max(0, settings.backgroundEnergy)
+  scene.backgroundIntensity = backgroundEnergy
 
   const skyLike = settings.ambientSource === 'sky' || (settings.ambientSource === 'background' && mode === 'sky')
   const colorLike = settings.ambientSource === 'color' || (settings.ambientSource === 'background' && mode !== 'sky')

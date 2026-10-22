@@ -45,10 +45,12 @@ const showSkyContribution = computed(() => {
           <option value="canvas">Canvas</option>
         </select>
       </PropRow>
-      <PropRow label="Color" :reset="() => store.resetEnvironment(node.id, 'backgroundColor')">
+      <p v-if="settings.backgroundMode === 'sky'" class="env-note">Draws a sky behind the scene. The environment map still lights the scene.</p>
+      <p v-else-if="settings.backgroundMode === 'canvas'" class="env-note">Draws no 3D background. The panel behind the viewport shows through.</p>
+      <PropRow v-if="settings.backgroundMode === 'color'" label="Color" :reset="() => store.resetEnvironment(node.id, 'backgroundColor')">
         <input type="color" :value="settings.backgroundColor" @input="store.setEnvironmentColor(node.id, 'backgroundColor', ($event.target as HTMLInputElement).value)" />
       </PropRow>
-      <PropRow label="Energy" :reset="() => store.resetEnvironment(node.id, 'backgroundEnergy')">
+      <PropRow v-if="settings.backgroundMode !== 'canvas'" label="Energy" :reset="() => store.resetEnvironment(node.id, 'backgroundEnergy')">
         <input type="number" min="0" max="10" step="0.05" :value="formatNumber(settings.backgroundEnergy)" @change="onNumber('backgroundEnergy', $event)" />
       </PropRow>
     </Section>
