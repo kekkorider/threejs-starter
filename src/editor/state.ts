@@ -8,7 +8,7 @@ import {
   applyParameters,
   compileComponent,
   componentTemplate,
-  methodNames,
+  mergedMethodNames,
   parameterFields,
   readParameters,
   uniqueIdentifier,
@@ -1515,9 +1515,11 @@ export class EditorState {
       }))
   }
 
-  componentMethodNames(instanceId: string): string[] {
+  componentMethodNames(instanceId: string, source?: string): string[] {
     const instance = this.componentInstances.get(instanceId)
-    return instance ? methodNames(instance.behaviour) : []
+    if (!instance) return []
+    const text = source ?? this.components.get(instance.resourceId)?.source
+    return mergedMethodNames(instance.behaviour, text)
   }
 
   addSignal(nodeId: string, rawName: string, rawArgs: string): string | null {
@@ -2099,7 +2101,7 @@ export class EditorState {
       .find((item) => item?.name === componentName)
     if (!instance) return `${to.name} has no ${componentName}.`
     const fn = (instance.behaviour as unknown as Record<string, unknown>)[methodName]
-    if (typeof fn !== 'function') return `${componentName} has no method ${methodName}.`
+    if (typeof fn !== 'function') return `Apply the script. ${componentName} has no method ${methodName} yet.`
     const link: SignalLink = {
       id: `lnk${this.idCounter++}`,
       signal: name,

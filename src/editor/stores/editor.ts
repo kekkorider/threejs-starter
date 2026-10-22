@@ -2532,9 +2532,21 @@ export const useEditorStore = defineStore('editor', () => {
     return rows
   }
 
+  function visibleComponentSource(resourceId: string): string | undefined {
+    if (activeScriptId.value === resourceId) return scriptSource.value
+    if (dockResourceId.value === resourceId) return dockSource.value
+    if (Object.hasOwn(scriptDrafts.value, resourceId)) return scriptDrafts.value[resourceId]
+    return engine.components.get(resourceId)?.source
+  }
+
   function componentMethodNames(instanceId: string): string[] {
     void revision.value
-    return engine.componentMethodNames(instanceId)
+    void scriptSource.value
+    void dockSource.value
+    void scriptDrafts.value
+    const instance = engine.componentInstances.get(instanceId)
+    if (!instance) return []
+    return engine.componentMethodNames(instanceId, visibleComponentSource(instance.resourceId))
   }
 
   function onKeyDown(event: KeyboardEvent): void {
