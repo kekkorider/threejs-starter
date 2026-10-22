@@ -21,6 +21,7 @@
   --node: #78aef8;
   --light: #f0d264;
   --camera: #6ec8e0;
+  --world: #6ec8a0;
   --left: 272px;
   --right: 318px;
   --bottom: 236px;
@@ -237,6 +238,7 @@
 .tree-row .kind-icon.mesh, .file-row .mesh, .menu-item .kind-icon.mesh { color: var(--mesh); }
 .tree-row .kind-icon.light, .file-row .light, .menu-item .kind-icon.light { color: var(--light); }
 .tree-row .kind-icon.camera, .file-row .camera, .node-head .kind-icon.camera, .menu-item .kind-icon.camera { color: var(--camera); }
+.tree-row .kind-icon.world, .file-row .world, .node-head .kind-icon.world, .menu-item .kind-icon.world { color: var(--world); }
 .tree-row .kind-icon.component, .file-row .component, .node-head .kind-icon.component, .menu-item .kind-icon.component { color: #7ec8e3; }
 .tree-row .kind-icon.scene, .file-row .scene, .menu-item .kind-icon.scene { color: #7aa2ff; }
 .tree-row .kind-icon .ico, .file-row .ico { width: 14px; height: 14px; display: block; -webkit-user-drag: none; }
@@ -865,6 +867,13 @@
 }
 .warning-body .hint { padding: 0 0 8px; }
 .warning-body .hint.error { color: #ffb4b4; }
+.env-note {
+  margin: 0;
+  padding: 8px 10px 0;
+  color: var(--font-dim);
+}
+.env-note.active { color: var(--ok); }
+.env-note.inactive { color: var(--warn); }
 .instance-note {
   display: flex;
   align-items: center;

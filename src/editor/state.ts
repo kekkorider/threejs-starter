@@ -42,6 +42,26 @@ import {
   type CameraSettings,
 } from './camera'
 import { attachCameraIcon, disposeCameraIcon } from './cameraIcons'
+import {
+  applyEnvironmentSettings,
+  closestEnvironment,
+  copyEnvironmentSettings,
+  defaultEnvironmentSettings,
+  environmentFromLegacy,
+  readEnvironment,
+  resetEnvironmentField,
+  shouldSynthesizeEnvironment,
+  writeEnvironmentColor,
+  writeEnvironmentNumber,
+  type AmbientSource,
+  type BackgroundMode,
+  type EnvironmentFlagField,
+  type EnvironmentNumberField,
+  type EnvironmentSettings,
+  type EnvironmentView,
+  type FogMode,
+} from './environment'
+import { attachEnvironmentIcon, disposeEnvironmentIcon } from './environmentIcons'
 import { attachLightArrow, attachLightIcon, attachSpotCone, disposeLightArrow, disposeLightIcon, disposeSpotCone, updateSpotCone, type LightIconKind } from './lightIcons'
 import {
   hasSceneFile,
@@ -70,6 +90,7 @@ import {
 
 export type NodeKind =
   | 'Node3D'
+  | 'WorldEnvironment'
   | 'MeshInstance3D'
   | 'Camera3D'
   | 'DirectionalLight3D'
@@ -96,6 +117,7 @@ export interface NodeDefaults {
   receiveShadow: boolean | null
   light: LightDefaults | null
   camera: CameraSettings | null
+  environment: EnvironmentSettings | null
 }
 
 export interface LightDefaults {
@@ -209,6 +231,7 @@ export interface CreateLightOptions {
 
 export const NODE_LABEL: Record<NodeKind, string> = {
   Node3D: 'Node',
+  WorldEnvironment: 'WorldEnvironment',
   MeshInstance3D: 'MeshInstance',
   Camera3D: 'Camera',
   DirectionalLight3D: 'DirectionalLight',
@@ -225,6 +248,11 @@ export interface SceneSettings {
   environmentIntensity: number
   shadows: boolean
   shadowType: ShadowTypeName
+  /**
+   * Active WorldEnvironment, or null when the scene has none.
+   * Missing on scene files saved before this node existed.
+   */
+  environment?: EnvironmentSettings | null
 }
 
 export interface GridSettings {
@@ -236,14 +264,6 @@ export interface GridSettings {
   position: { x: number, y: number, z: number }
 }
 
-const SCENE_DEFAULTS: SceneSettings = {
-  background: '#3a3a3a',
-  backgroundIntensity: 1,
-  environmentIntensity: 0.55,
-  shadows: true,
-  shadowType: 'pcf',
-}
-
 const GRID_DEFAULTS = {
   visible: true,
   size: 40,
@@ -251,12 +271,6 @@ const GRID_DEFAULTS = {
   center: '#8a8a8a',
   color: '#2a2a2a',
   position: { x: 0, y: 0, z: 0 },
-}
-
-const SHADOW_TYPE: Record<ShadowTypeName, THREE.ShadowMapType> = {
-  basic: THREE.BasicShadowMap,
-  pcf: THREE.PCFShadowMap,
-  vsm: THREE.VSMShadowMap,
 }
 
 export class EditorState {
@@ -297,6 +311,9 @@ export class EditorState {
   /** Save and load mutate the tree without counting as a new edit. */
   private restoring = false
   private scene: THREE.Scene | null = null
+  /** Fill light driven by the active WorldEnvironment. It is not a scene-tree node. */
+  private ambientFill: THREE.AmbientLight | null = null
+  private environmentWarning = ''
   /** Camera the viewport is rendering with. The editor camera, unless previewing or playing a scene camera. */
   private camera: THREE.PerspectiveCamera | THREE.OrthographicCamera | null = null
   /** Orbit camera. Scene cameras never replace this object. */
@@ -358,7 +375,7 @@ export class EditorState {
     this.scene = scene
     this.editorCamera = camera
     this.camera = camera
-    scene.background = new THREE.Color(0x3a3a3a)
+    scene.background = new THREE.Color(defaultEnvironmentSettings().backgroundColor)
 
     const world = new THREE.Group()
     world.name = 'World'
@@ -381,8 +398,8 @@ export class EditorState {
     }
 
     this.rebuildGrid()
-    renderer.shadowMap.enabled = true
-    renderer.shadowMap.type = THREE.PCFShadowMap
+    this.installEnvironment(renderer)
+    this.syncEnvironment()
 
     this.controls = new TransformControls(camera, renderer.domElement)
     this.controls.setMode('translate')
@@ -407,8 +424,6 @@ export class EditorState {
     })
     this.syncOrbitMouse()
 
-    this.installEnvironment(renderer)
-    if (this.scene) this.scene.environmentIntensity = SCENE_DEFAULTS.environmentIntensity
     starter.ctx.on(ThreeContextEvents.Update, () => this.onFrame())
 
     const hideProfiler = () => {
@@ -431,6 +446,7 @@ export class EditorState {
         this.sceneDirty = true
       }
     } else {
+      this.createWorldEnvironment(this.rootId, undefined, undefined, { select: false, quiet: true, front: true })
       this.sceneDirty = true
     }
     return true
@@ -559,6 +575,7 @@ export class EditorState {
     const node = this.addNode(object, parent.id, 'Node3D', false)
     node.instancePath = path
     this.expandInstance(path, node.id, new Set([this.scenePath]))
+    this.syncEnvironment()
     this.log(`Instanced ${path}`)
     this.select(node.id)
     return node
@@ -594,16 +611,26 @@ export class EditorState {
   }
 
   sceneSettings(): SceneSettings {
-    const scene = this.scene
-    const background = scene?.background
-    const color = background instanceof THREE.Color ? `#${background.getHexString()}` : '#3a3a3a'
-    const shadow = this.starter?.ctx.renderer.shadowMap
+    const active = this.activeWorldEnvironment()
+    const settings = active ? readEnvironment(active.object) : null
+    const fallback = defaultEnvironmentSettings()
+    if (!settings) {
+      return {
+        background: fallback.backgroundColor,
+        backgroundIntensity: fallback.backgroundEnergy,
+        environmentIntensity: fallback.ambientEnergy,
+        shadows: fallback.shadows,
+        shadowType: fallback.shadowType,
+        environment: null,
+      }
+    }
     return {
-      background: color,
-      backgroundIntensity: scene?.backgroundIntensity ?? 1,
-      environmentIntensity: scene?.environmentIntensity ?? 1,
-      shadows: shadow?.enabled ?? false,
-      shadowType: shadowTypeName(shadow?.type),
+      background: settings.backgroundColor,
+      backgroundIntensity: settings.backgroundEnergy,
+      environmentIntensity: settings.ambientEnergy,
+      shadows: settings.shadows,
+      shadowType: settings.shadowType,
+      environment: copyEnvironmentSettings(settings),
     }
   }
 
@@ -616,48 +643,6 @@ export class EditorState {
       color: this.gridColor,
       position: { x: this.gridPosition.x, y: this.gridPosition.y, z: this.gridPosition.z },
     }
-  }
-
-  resetScene(field: keyof SceneSettings): void {
-    if (field === 'background') this.setBackground(SCENE_DEFAULTS.background)
-    else if (field === 'backgroundIntensity') this.setBackgroundIntensity(SCENE_DEFAULTS.backgroundIntensity)
-    else if (field === 'environmentIntensity') this.setEnvironmentIntensity(SCENE_DEFAULTS.environmentIntensity)
-    else if (field === 'shadows') this.setShadows(SCENE_DEFAULTS.shadows)
-    else this.setShadowType(SCENE_DEFAULTS.shadowType)
-  }
-
-  setBackground(color: string): void {
-    const scene = this.scene
-    if (!scene) return
-    if (scene.background instanceof THREE.Color) scene.background.set(color)
-    else scene.background = new THREE.Color(color)
-    this.touchScene()
-  }
-
-  setBackgroundIntensity(value: number): void {
-    if (!this.scene || !Number.isFinite(value)) return
-    this.scene.backgroundIntensity = Math.max(0, value)
-    this.touchScene()
-  }
-
-  setEnvironmentIntensity(value: number): void {
-    if (!this.scene || !Number.isFinite(value)) return
-    this.scene.environmentIntensity = Math.max(0, value)
-    this.touchScene()
-  }
-
-  setShadows(enabled: boolean): void {
-    const shadow = this.starter?.ctx.renderer.shadowMap
-    if (!shadow) return
-    shadow.enabled = enabled
-    this.touchScene()
-  }
-
-  setShadowType(name: ShadowTypeName): void {
-    const shadow = this.starter?.ctx.renderer.shadowMap
-    if (!shadow) return
-    shadow.type = SHADOW_TYPE[name]
-    this.touchScene()
   }
 
   setGridVisible(visible: boolean): void {
@@ -902,6 +887,93 @@ export class EditorState {
     return node
   }
 
+  /**
+   * A WorldEnvironment is a Node, so it has no transform the viewport can drag.
+   * The one closest to the root supplies the viewport. The rest keep their settings.
+   */
+  createWorldEnvironment(
+    parentId?: string | null,
+    name?: string,
+    settings?: EnvironmentSettings,
+    options?: { select?: boolean, quiet?: boolean, front?: boolean },
+  ): EditorNode {
+    const parent = this.parentOrSelected(parentId)
+    const object = new THREE.Group()
+    object.name = this.uniqueName(name?.trim() || 'WorldEnvironment')
+    object.userData.environment = copyEnvironmentSettings(settings ?? defaultEnvironmentSettings())
+    parent.object.add(object)
+    const node = this.addNode(object, parent.id, 'WorldEnvironment', false)
+    if (options?.front) this.placeFirst(node)
+    this.syncEnvironment()
+    if (!options?.quiet) this.log(`Added ${node.name}`)
+    if (options?.select !== false) this.select(node.id)
+    return node
+  }
+
+  environmentView(node: EditorNode): EnvironmentView | null {
+    if (node.kind !== 'WorldEnvironment') return null
+    if (!readEnvironment(node.object)) node.object.userData.environment = defaultEnvironmentSettings()
+    const settings = readEnvironment(node.object) ?? defaultEnvironmentSettings()
+    const active = this.activeWorldEnvironment()
+    return {
+      active: active?.id === node.id,
+      total: this.environmentNodes().length,
+      activeName: active?.name ?? node.name,
+      settings: copyEnvironmentSettings(settings),
+    }
+  }
+
+  setEnvironmentBackgroundMode(id: string, mode: BackgroundMode): void {
+    this.updateEnvironment(id, (settings) => {
+      settings.backgroundMode = mode
+    })
+  }
+
+  setEnvironmentAmbientSource(id: string, source: AmbientSource): void {
+    this.updateEnvironment(id, (settings) => {
+      settings.ambientSource = source
+    })
+  }
+
+  setEnvironmentFogMode(id: string, mode: FogMode): void {
+    this.updateEnvironment(id, (settings) => {
+      settings.fogMode = mode
+    })
+  }
+
+  setEnvironmentColor(id: string, field: 'backgroundColor' | 'ambientColor' | 'fogColor', color: string): void {
+    this.updateEnvironment(id, (settings) => {
+      writeEnvironmentColor(settings, field, color)
+    })
+  }
+
+  setEnvironmentNumber(id: string, field: EnvironmentNumberField, value: number): void {
+    this.updateEnvironment(id, (settings) => {
+      writeEnvironmentNumber(settings, field, value)
+    })
+  }
+
+  setEnvironmentFlag(id: string, field: EnvironmentFlagField, value: boolean): void {
+    this.updateEnvironment(id, (settings) => {
+      settings[field] = value
+    })
+  }
+
+  setEnvironmentShadowType(id: string, name: ShadowTypeName): void {
+    this.updateEnvironment(id, (settings) => {
+      settings.shadowType = name
+    })
+  }
+
+  resetEnvironment(id: string, field: keyof EnvironmentSettings): void {
+    const node = this.nodes.get(id)
+    const defaults = node?.defaults.environment
+    if (!defaults) return
+    this.updateEnvironment(id, (settings) => {
+      resetEnvironmentField(settings, defaults, field)
+    })
+  }
+
   createMesh(options: CreateMeshOptions): EditorNode {
     const parent = this.parentOrSelected(options.parentId)
     const geometryResource = this.createGeometryResource(options.geometryType, options.params)
@@ -1078,6 +1150,7 @@ export class EditorState {
     const ids = this.collectIds(node)
     if (this.previewCameraId && ids.includes(this.previewCameraId)) this.previewCameraId = null
     this.releaseCameras(node.object)
+    this.releaseEnvironment(node.object)
     this.releaseLights(node.object)
     for (const childId of ids) this.forgetNodeComponents(childId)
     destroy(node.object)
@@ -1087,6 +1160,7 @@ export class EditorState {
     this.dropOrphanResources()
     this.pruneSelection(parent?.id ?? this.rootId)
     this.syncViewCamera()
+    this.syncEnvironment()
     if (!quiet) this.log(`Removed ${node.name}`)
     this.touchScene()
   }
@@ -1269,6 +1343,7 @@ export class EditorState {
     parent.childIds.push(id)
     node.parentId = parent.id
     parent.object.attach(node.object)
+    this.syncEnvironment()
     this.log(`Moved ${node.name} under ${parent.name}`)
     this.touchScene()
   }
@@ -1868,6 +1943,7 @@ export class EditorState {
         materialId: materialIdFor(node),
         light: lightDefaultsFrom(node.object),
         camera: this.cameraRecord(node),
+        environment: node.kind === 'WorldEnvironment' ? copyEnvironmentSettings(readEnvironment(node.object) ?? defaultEnvironmentSettings()) : null,
         components: this.componentRecords(node),
         instance: node.instancePath,
       })
@@ -1908,11 +1984,6 @@ export class EditorState {
       }
       root.componentIds = []
 
-      this.setBackground(file.scene.background)
-      this.setBackgroundIntensity(file.scene.backgroundIntensity)
-      this.setEnvironmentIntensity(file.scene.environmentIntensity)
-      this.setShadows(file.scene.shadows)
-      this.setShadowType(file.scene.shadowType)
       this.setGridVisible(file.grid.visible)
       this.setGridSize(file.grid.size)
       this.setGridDivisions(file.grid.divisions)
@@ -1955,6 +2026,14 @@ export class EditorState {
         const created = this.spawnRecord(record, parentRuntime, geoMap, matMap, new Set(), preserveNames)
         runtime.set(record.id, created.id)
       }
+      if (shouldSynthesizeEnvironment(file.scene.environment, this.environmentNodes().length > 0)) {
+        this.createWorldEnvironment(this.rootId, 'WorldEnvironment', environmentFromLegacy(file.scene), {
+          select: false,
+          quiet: true,
+          front: true,
+        })
+      }
+      this.syncEnvironment(true)
       this.enforceSingleCurrent()
       this.syncViewCamera()
       this.select(this.rootId)
@@ -2020,6 +2099,9 @@ export class EditorState {
       const settings = record.camera ? copyCameraSettings(record.camera) : defaultCameraSettings()
       object = createCameraObject(settings)
       object.userData.camera = settings
+    } else if (record.kind === 'WorldEnvironment') {
+      object = new THREE.Group()
+      object.userData.environment = copyEnvironmentSettings(record.environment ?? defaultEnvironmentSettings())
     } else {
       object = new THREE.Group()
     }
@@ -2247,7 +2329,7 @@ export class EditorState {
     const controls = this.controls
     if (!controls) return
     const node = this.selected()
-    if (!node || node.isRoot || this.playing || this.tool === 'select' || this.tool === 'list') {
+    if (!node || node.isRoot || node.kind === 'WorldEnvironment' || this.playing || this.tool === 'select' || this.tool === 'list') {
       controls.detach()
       return
     }
@@ -2258,7 +2340,7 @@ export class EditorState {
   private updateSelectionBox(): void {
     const nodes = this.selectedIds
       .map((id) => this.nodes.get(id))
-      .filter((node): node is EditorNode => Boolean(node && !node.isRoot))
+      .filter((node): node is EditorNode => Boolean(node && !node.isRoot && node.kind !== 'WorldEnvironment'))
     const show = nodes.length > 0 && !this.playing && this.chromeVisible && (this.selectionTool() || nodes.length > 1)
     if (!show) {
       for (const helper of this.selectionHelpers) helper.visible = false
@@ -2309,6 +2391,71 @@ export class EditorState {
     scene.add(grid)
     this.applyGridPosition()
     this.applyGridVisibility()
+  }
+
+  private activeWorldEnvironment(): EditorNode | null {
+    const root = this.nodes.get(this.rootId)
+    if (!root) return null
+    return closestEnvironment(
+      root,
+      (node) => node.childIds.flatMap((id) => {
+        const child = this.nodes.get(id)
+        return child ? [child] : []
+      }),
+      (node) => node.kind === 'WorldEnvironment',
+    )
+  }
+
+  private environmentNodes(): EditorNode[] {
+    return [...this.nodes.values()].filter((node) => node.kind === 'WorldEnvironment')
+  }
+
+  private updateEnvironment(id: string, edit: (settings: EnvironmentSettings) => void): void {
+    const node = this.nodes.get(id)
+    if (!node || node.kind !== 'WorldEnvironment') return
+    const settings = readEnvironment(node.object) ?? defaultEnvironmentSettings()
+    node.object.userData.environment = settings
+    edit(settings)
+    this.syncEnvironment()
+    this.touchScene()
+  }
+
+  private placeFirst(node: EditorNode): void {
+    const parent = node.parentId ? this.nodes.get(node.parentId) : undefined
+    if (!parent) return
+    parent.childIds = [node.id, ...parent.childIds.filter((id) => id !== node.id)]
+    const index = parent.object.children.indexOf(node.object)
+    if (index > 0) {
+      parent.object.children.splice(index, 1)
+      parent.object.children.unshift(node.object)
+    }
+  }
+
+  /** Push the active WorldEnvironment onto the viewport, or the default when none is in the tree. */
+  private syncEnvironment(force = false): void {
+    if (this.restoring && !force) return
+    const scene = this.scene
+    const renderer = this.starter?.ctx.renderer
+    if (!scene || !renderer) return
+    const active = this.activeWorldEnvironment()
+    const settings = active ? (readEnvironment(active.object) ?? defaultEnvironmentSettings()) : defaultEnvironmentSettings()
+    applyEnvironmentSettings(scene, renderer, this.ensureAmbient(scene), settings)
+    const count = this.environmentNodes().length
+    const warning = count > 1 && active
+      ? `${count} WorldEnvironment nodes. The viewport uses ${active.name}, the one closest to the root.`
+      : ''
+    if (warning && warning !== this.environmentWarning) this.log(warning, 'warn')
+    this.environmentWarning = warning
+  }
+
+  private ensureAmbient(scene: THREE.Scene): THREE.AmbientLight {
+    if (this.ambientFill) return this.ambientFill
+    const light = new THREE.AmbientLight('#ffffff', 0)
+    light.name = 'EnvironmentAmbient'
+    light.userData.editorHidden = true
+    scene.add(light)
+    this.ambientFill = light
+    return light
   }
 
   private installEnvironment(renderer: THREE.Renderer): void {
@@ -2626,6 +2773,7 @@ export class EditorState {
     this.nodes.get(parentId)?.childIds.push(id)
     this.attachIcon(node)
     if (kind === 'Camera3D') this.attachCameraChrome(node)
+    if (kind === 'WorldEnvironment') attachEnvironmentIcon(object)
     this.captureDefaults(node)
     this.touchScene()
     return node
@@ -2634,6 +2782,9 @@ export class EditorState {
   private cloneNode(node: EditorNode, parentId: string, ownerId: string | null): EditorNode {
     const object = node.object.clone(false)
     object.name = this.uniqueName(node.name)
+    if (node.kind === 'WorldEnvironment') {
+      object.userData.environment = copyEnvironmentSettings(readEnvironment(node.object) ?? defaultEnvironmentSettings())
+    }
     const parent = this.nodes.get(parentId)
     parent?.object.add(object)
     const copy = this.addNode(object, parentId, node.kind, node.imported)
@@ -2717,7 +2868,9 @@ export class EditorState {
         cone.visible = show
         if (show) updateSpotCone(node.object)
       }
-      const icon = node.object.getObjectByName('LightIcon') ?? node.object.getObjectByName('CameraIcon')
+      const icon = node.object.getObjectByName('LightIcon')
+        ?? node.object.getObjectByName('CameraIcon')
+        ?? node.object.getObjectByName('EnvironmentIcon')
       if (!icon) continue
       icon.visible = show && this.activeCameraId() !== node.id
       if (!icon.visible || !camera) continue
@@ -2732,7 +2885,7 @@ export class EditorState {
 
   private measureBounds(object: THREE.Object3D, target: THREE.Box3): THREE.Box3 {
     const hidden: { object: THREE.Object3D, visible: boolean }[] = []
-    for (const name of ['LightIcon', 'LightArrow', 'CameraIcon', 'SpotCone']) {
+    for (const name of ['LightIcon', 'LightArrow', 'CameraIcon', 'EnvironmentIcon', 'SpotCone']) {
       const child = object.getObjectByName(name)
       if (!child) continue
       hidden.push({ object: child, visible: child.visible })
@@ -2784,6 +2937,7 @@ export class EditorState {
       receiveShadow: object instanceof THREE.Mesh ? object.receiveShadow : null,
       light: lightDefaultsFrom(object),
       camera: copyStoredCamera(object),
+      environment: copyStoredEnvironment(object),
     }
   }
 
@@ -2838,6 +2992,12 @@ export class EditorState {
       const id = child.userData.editorId as string | undefined
       if (id) this.disposeCameraHelper(id)
       disposeCameraIcon(child)
+    })
+  }
+
+  private releaseEnvironment(object: THREE.Object3D): void {
+    object.traverse((child) => {
+      disposeEnvironmentIcon(child)
     })
   }
 
@@ -3015,6 +3175,7 @@ export class EditorState {
     if ((copy.object as THREE.Mesh).isMesh) copy.object.position.x += 0.45
     this.clearDuplicatedCurrent(copy)
     this.captureDefaults(copy)
+    this.syncEnvironment()
     this.log(`Duplicated ${node.name} as ${copy.name}`)
     return copy
   }
@@ -3205,7 +3366,9 @@ export class EditorState {
     for (const node of this.nodes.values()) {
       if (node.isRoot) continue
       if (node.object instanceof THREE.Mesh && node.object.visible) targets.push(node.object)
-      const icon = node.object.getObjectByName('LightIcon') ?? node.object.getObjectByName('CameraIcon')
+      const icon = node.object.getObjectByName('LightIcon')
+        ?? node.object.getObjectByName('CameraIcon')
+        ?? node.object.getObjectByName('EnvironmentIcon')
       if (icon?.visible) targets.push(icon)
     }
     const hits = raycaster.intersectObjects(targets, true)
@@ -3376,6 +3539,11 @@ function copyStoredCamera(object: THREE.Object3D): CameraSettings | null {
   return settings ? copyCameraSettings(settings) : null
 }
 
+function copyStoredEnvironment(object: THREE.Object3D): EnvironmentSettings | null {
+  const settings = readEnvironment(object)
+  return settings ? copyEnvironmentSettings(settings) : null
+}
+
 function copyLookAt(value: LookAtConfig | undefined): LookAtConfig | null {
   if (!value) return null
   return { enabled: value.enabled, x: value.x, y: value.y, z: value.z }
@@ -3416,12 +3584,6 @@ function iconKind(kind: NodeKind): LightIconKind | null {
   return null
 }
 
-function shadowTypeName(type: THREE.ShadowMapType | undefined): ShadowTypeName {
-  if (type === THREE.BasicShadowMap) return 'basic'
-  if (type === THREE.VSMShadowMap) return 'vsm'
-  return 'pcf'
-}
-
 function kindOf(object: THREE.Object3D): NodeKind | null {
   const tagged = object.userData.editorKind as NodeKind | undefined
   if (tagged) return tagged
@@ -3442,6 +3604,13 @@ export const NODE_TYPES: { kind: NodeKind, label: string, group: string, descrip
     group: 'Node',
     description: 'An empty node. Use it to group meshes, lights, and other nodes. It has a transform and nothing else.',
     inherits: 'Node',
+  },
+  {
+    kind: 'WorldEnvironment',
+    label: 'WorldEnvironment',
+    group: 'Node',
+    description: 'The default environment for the viewport: background, ambient light, fog, and shadow map. The environment map lights the scene and shows in reflections together. When several are in the tree, the viewport uses the one closest to the root.',
+    inherits: 'WorldEnvironment < Node',
   },
   {
     kind: 'MeshInstance3D',
