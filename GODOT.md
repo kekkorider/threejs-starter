@@ -91,6 +91,14 @@ When a feature lands, move it from **Not yet** into **Already in place**. Do not
 - The Script dock follows the selected node. The slot shows that node's script, or `[empty]` when it has none. Its menu attaches a script, switches among the scripts on that node, opens one in the Script screen, or detaches it. The source under the slot edits in place, and Apply writes the file. Drag a component from the File system onto the dock to attach it.
 - A node with a script shows an icon on its scene-tree row. Clicking it opens that script in the dock and leaves the inspector on the node. Several scripts open a list. Right-click the node and choose Open Script to do the same.
 
+### Groups and signals
+
+- The Node dock sits under the Inspector. It has Signals and Groups.
+- A group is Local or Global. A local group belongs to the open scene and is saved in the scene file. A global group is stored for the project and is available in every scene.
+- Check a group to put the selected node in it. Component scripts call `isInGroup`, `isInLocalGroup`, and `isInGlobalGroup` to test that membership. `nodesInGroup` returns the objects in a group. Those names are already in scope in a component script.
+- Built-in signals are ready (play starts), tree_entered (a node is added), tree_exiting (a node is deleted), renamed, and visibility_changed. Scene load does not emit them, because the tree is rebuilt.
+- Add a custom signal and connect it to a method on a component. The connection is saved in the scene. eventemitter3 delivers every signal. Scripts call `emitSignal`, `connectSignal`, `disconnectSignal`, and `isSignalConnected`.
+
 ### History
 
 - Undo and redo for inspector edits, transforms, create, delete, and reparent. Ctrl+Z undoes. Ctrl+Shift+Z and Ctrl+Y redo. Scene → Undo and Scene → Redo, and the back and forward buttons on the Scene dock, do the same.
@@ -125,7 +133,6 @@ Build these in an order that keeps the editor usable. A half-wired Godot feature
 ### Simulation
 
 - Physics bodies are still available in `src/webgl/behaviors/physics`, but the starter scene no longer places any. A collision shape on a node, edited from the inspector, is the Godot-shaped version of that.
-- Groups and signals.
 
 ## Conventions
 

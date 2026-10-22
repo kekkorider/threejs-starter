@@ -3,6 +3,17 @@ import { Object3DBehaviour } from 'three-start'
 import type { Object3DBehaviourConstructor } from 'three-start'
 import { Spin } from '../webgl/behaviors/Spin'
 import spinSource from '../webgl/behaviors/Spin.ts?raw'
+import {
+  SCRIPT_API,
+  connectSignal,
+  disconnectSignal,
+  emitSignal,
+  isInGlobalGroup,
+  isInGroup,
+  isInLocalGroup,
+  isSignalConnected,
+  nodesInGroup,
+} from './sceneApi'
 
 export const COMPONENT_DRAG_PREFIX = 'component:'
 export const INSTANCE_DRAG_PREFIX = 'instance:'
@@ -54,6 +65,10 @@ export function componentTemplate(name: string): string {
   return `import { Object3DBehaviour } from "three-start"
 
 export class ${name} extends Object3DBehaviour {
+  // isInGroup(object, group) reports membership.
+  // isInLocalGroup and isInGlobalGroup also check local or global scope.
+  // emitSignal, connectSignal, and isSignalConnected use eventemitter3.
+
 ${methods}
 }
 `
@@ -102,8 +117,22 @@ export function compileComponent(source: string): CompiledComponent {
     .replace(/\bexport\s+default\s+/g, '')
     .replace(/\bexport\s+/g, '')
   try {
-    const factory = new Function('Object3DBehaviour', `"use strict";\n${body}\nreturn ${name};`)
-    const ctor = factory(Object3DBehaviour) as Object3DBehaviourConstructor
+    const scriptApi = [
+      isInGroup,
+      isInLocalGroup,
+      isInGlobalGroup,
+      nodesInGroup,
+      emitSignal,
+      connectSignal,
+      disconnectSignal,
+      isSignalConnected,
+    ]
+    const factory = new Function(
+      'Object3DBehaviour',
+      ...SCRIPT_API,
+      `"use strict";\n${body}\nreturn ${name};`,
+    )
+    const ctor = factory(Object3DBehaviour, ...scriptApi) as Object3DBehaviourConstructor
     if (typeof ctor !== 'function') throw new Error(`Could not compile ${name}.`)
     return { name, ctor }
   } catch (error) {
@@ -112,6 +141,44 @@ export function compileComponent(source: string): CompiledComponent {
 }
 
 const SKIPPED_FIELDS = new Set(['object', 'ctx', 'modules', 'enabled', 'isObject3DBehaviour'])
+
+const SKIP_METHODS = new Set([
+  'constructor',
+  'toString',
+  'valueOf',
+  'toLocaleString',
+  'hasOwnProperty',
+  'isPrototypeOf',
+  'propertyIsEnumerable',
+  'enable',
+  'disable',
+  'setEnabled',
+  'on',
+  'once',
+  'off',
+  'emit',
+  'addListener',
+  'removeListener',
+  'removeAllListeners',
+  'listeners',
+  'listenerCount',
+  'eventNames',
+])
+
+/** Method names a signal can call on this component. */
+export function methodNames(behaviour: object): string[] {
+  const names = new Set<string>()
+  let current: object | null = behaviour
+  while (current && current !== Object.prototype) {
+    for (const key of Object.getOwnPropertyNames(current)) {
+      if (SKIP_METHODS.has(key)) continue
+      const descriptor = Object.getOwnPropertyDescriptor(current, key)
+      if (typeof descriptor?.value === 'function') names.add(key)
+    }
+    current = Object.getPrototypeOf(current) as object | null
+  }
+  return [...names].sort((left, right) => left.localeCompare(right))
+}
 
 export interface ComponentParameter {
   key: string

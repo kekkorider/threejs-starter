@@ -1,6 +1,8 @@
 import { isCameraSettings, type CameraSettings } from './camera'
 import { isEnvironmentSettings, type EnvironmentSettings } from './environment'
 import { GEOMETRY_CATALOG, type GeometryType } from './geometry'
+import { isGroupRecord, type GroupRecord } from './groups'
+import { isSignalDefinition, isSignalLinkRecord, type SignalDefinition, type SignalLinkRecord } from './signals'
 import type { GridSettings, LightDefaults, NodeKind, SceneSettings, ShadowTypeName } from './state'
 import type { MaterialSide } from './tsl'
 
@@ -50,6 +52,10 @@ export interface SceneNodeRecord {
   components: SceneComponentRecord[]
   /** Packed scene placed at this node. Children come from that file. */
   instance?: string | null
+  /** Group names this node belongs to. Older scene files omit it. */
+  groups?: string[]
+  /** Custom signals. Built-in signals are not stored. Older scene files omit it. */
+  signals?: SignalDefinition[]
 }
 
 export const SCENE_DRAG_PREFIX = 'scene:'
@@ -89,6 +95,12 @@ export interface SceneFile {
   geometries: SceneGeometryRecord[]
   materials: SceneMaterialRecord[]
   nodes: SceneNodeRecord[]
+  /** Local groups for this scene. Older scene files omit it. */
+  groups?: GroupRecord[]
+  /** Global groups saved with the scene so another machine can restore them. */
+  globalGroups?: GroupRecord[]
+  /** Saved signal connections. Code listeners are not stored. */
+  connections?: SignalLinkRecord[]
 }
 
 const STORAGE_KEY = 'threejs-starter.scene-files'
@@ -202,6 +214,9 @@ export function isSceneFile(value: unknown): value is SceneFile {
   if (!Array.isArray(file.geometries) || !Array.isArray(file.materials) || !Array.isArray(file.nodes)) return false
   if (!file.geometries.every(isGeometryRecord) || !file.materials.every(isMaterialRecord)) return false
   if (!file.nodes.every(isNodeRecord)) return false
+  if (file.groups !== undefined && !(Array.isArray(file.groups) && file.groups.every(isGroupRecord))) return false
+  if (file.globalGroups !== undefined && !(Array.isArray(file.globalGroups) && file.globalGroups.every(isGroupRecord))) return false
+  if (file.connections !== undefined && !(Array.isArray(file.connections) && file.connections.every(isSignalLinkRecord))) return false
   return file.nodes.some((node) => node.parentId === null)
 }
 
@@ -274,6 +289,8 @@ function isNodeRecord(value: unknown): value is SceneNodeRecord {
     && Array.isArray(record.components)
     && record.components.every(isComponentRecord)
     && (record.instance == null || (typeof record.instance === 'string' && record.instance.startsWith('res://')))
+    && (record.groups === undefined || (Array.isArray(record.groups) && record.groups.every((name) => typeof name === 'string')))
+    && (record.signals === undefined || (Array.isArray(record.signals) && record.signals.every(isSignalDefinition)))
 }
 
 function isComponentRecord(value: unknown): value is SceneComponentRecord {

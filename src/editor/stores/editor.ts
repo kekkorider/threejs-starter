@@ -15,6 +15,7 @@ import { GEOMETRY_CATALOG, triangleCount, type GeometryType } from '../geometry'
 import type { NodeKind, ToolMode } from '../state'
 import type { AmbientSource, BackgroundMode, EnvironmentFlagField, EnvironmentNumberField, EnvironmentSettings, EnvironmentView, FogMode } from '../environment'
 import { EditorState, NODE_LABEL, NODE_TYPES, type EditorNode, type GridSettings, type LogLine, type ShadowTypeName } from '../state'
+import type { GroupScope } from '../groups'
 import { kindClass, kindIcon } from '../lib/format'
 import { COMPONENT_DRAG_PREFIX, INSTANCE_DRAG_PREFIX, type ComponentParameter } from '../behaviors'
 import { EditorHistory, sameScene, type HistoryRow, type SelectionBookmark } from '../history'
@@ -44,6 +45,7 @@ export interface NodeSnapshot {
   componentIds: string[]
   isRoot: boolean
   instancePath: string | null
+  instanceOwned: boolean
 }
 
 export interface ComponentFileSnapshot {
@@ -182,6 +184,10 @@ export const useEditorStore = defineStore('editor', () => {
   const expanded = ref(new Set<string>())
   const collapsed = ref(new Set<string>())
   const bottomTab = ref<'tsl' | 'output' | 'history'>('tsl')
+  const nodeTab = ref<'signals' | 'groups'>('signals')
+  const groupError = ref('')
+  const signalError = ref('')
+  const signalConnect = ref<{ fromId: string, signal: string } | null>(null)
   const bottomCollapsed = ref(false)
   const distraction = ref(false)
   const renamingId = ref<string | null>(null)
@@ -248,6 +254,7 @@ export const useEditorStore = defineStore('editor', () => {
         componentIds: [...node.componentIds],
         isRoot: node.isRoot,
         instancePath: node.instancePath,
+        instanceOwned: Boolean(node.instanceOwnerId),
       })
     }
     return list
@@ -384,6 +391,29 @@ export const useEditorStore = defineStore('editor', () => {
     const node = engine.nodes.get(id)
     if (!node) return null
     return describe(node)
+  })
+
+  const groupDefinitions = computed(() => {
+    void revision.value
+    return engine.listGroups()
+  })
+
+  const nodeLocked = computed(() => {
+    void revision.value
+    const id = selectedId.value
+    return Boolean(id && engine.nodes.get(id)?.instanceOwnerId)
+  })
+
+  const signalRows = computed(() => {
+    void revision.value
+    const id = selectedId.value
+    return id ? engine.listSignals(id) : []
+  })
+
+  const signalLinks = computed(() => {
+    void revision.value
+    const id = selectedId.value
+    return id ? engine.listSignalLinks(id) : []
   })
 
   const gridSettings = computed((): GridSettings => {
@@ -2414,6 +2444,99 @@ export const useEditorStore = defineStore('editor', () => {
     showPopup(anchor.getBoundingClientRect(), items, false)
   }
 
+  function isNodeInGroup(id: string | null, group: string, scope?: GroupScope): boolean {
+    void revision.value
+    if (!id) return false
+    return engine.isInGroup(id, group, scope)
+  }
+
+  function addGroup(name: string, scope: GroupScope, description: string): void {
+    record(`Add ${scope} group ${name.trim() || 'group'}`, () => {
+      groupError.value = engine.addGroup(name, scope, description) ?? ''
+    })
+  }
+
+  function removeGroup(name: string): void {
+    record(`Remove group ${name}`, () => {
+      groupError.value = engine.removeGroup(name) ?? ''
+    })
+  }
+
+  function setGroupScope(name: string, scope: GroupScope): void {
+    record(`Set ${name} to ${scope}`, () => {
+      groupError.value = engine.setGroupScope(name, scope) ?? ''
+    })
+  }
+
+  function setGroupMember(nodeId: string, group: string, member: boolean): void {
+    const nodeName = engine.nodes.get(nodeId)?.name ?? 'Node'
+    const label = member ? `Add ${nodeName} to ${group}` : `Remove ${nodeName} from ${group}`
+    record(label, () => {
+      groupError.value = engine.setGroupMember(nodeId, group, member) ?? ''
+    })
+  }
+
+  function addSignal(nodeId: string, name: string, args: string): void {
+    record(`Add signal ${name.trim() || 'signal'}`, () => {
+      signalError.value = engine.addSignal(nodeId, name, args) ?? ''
+    })
+  }
+
+  function removeSignal(nodeId: string, name: string): void {
+    record(`Remove signal ${name}`, () => {
+      signalError.value = engine.removeSignal(nodeId, name) ?? ''
+    })
+  }
+
+  function connectSignalTo(fromId: string, signal: string, toId: string, component: string, method: string): boolean {
+    let ok = false
+    record(`Connect ${signal}`, () => {
+      const error = engine.connectSignalTo(fromId, signal, toId, component, method)
+      signalError.value = error ?? ''
+      ok = !error
+    })
+    if (ok) signalConnect.value = null
+    return ok
+  }
+
+  function disconnectSignalLink(linkId: string): void {
+    record('Disconnect signal', () => {
+      signalError.value = engine.disconnectSignalLink(linkId) ?? ''
+    })
+  }
+
+  function emitSignalOn(nodeId: string, signal: string): void {
+    record(`Emit ${signal}`, () => {
+      signalError.value = engine.emitSignalOn(nodeId, signal) ?? ''
+    })
+  }
+
+  function openSignalConnect(fromId: string, signal: string): void {
+    signalError.value = ''
+    signalConnect.value = { fromId, signal }
+  }
+
+  function closeSignalConnect(): void {
+    signalConnect.value = null
+  }
+
+  function componentsOn(nodeId: string): { id: string, name: string }[] {
+    void revision.value
+    const node = engine.nodes.get(nodeId)
+    if (!node) return []
+    const rows: { id: string, name: string }[] = []
+    for (const id of node.componentIds) {
+      const instance = engine.componentInstances.get(id)
+      if (instance) rows.push({ id, name: instance.name })
+    }
+    return rows
+  }
+
+  function componentMethodNames(instanceId: string): string[] {
+    void revision.value
+    return engine.componentMethodNames(instanceId)
+  }
+
   function onKeyDown(event: KeyboardEvent): void {
     const target = event.target as HTMLElement | null
     const typing = !!target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
@@ -2550,6 +2673,14 @@ export const useEditorStore = defineStore('editor', () => {
     expanded,
     collapsed,
     bottomTab,
+    nodeTab,
+    groupError,
+    signalError,
+    signalConnect,
+    groupDefinitions,
+    nodeLocked,
+    signalRows,
+    signalLinks,
     bottomCollapsed,
     distraction,
     renamingId,
@@ -2744,6 +2875,20 @@ export const useEditorStore = defineStore('editor', () => {
     redo,
     goToHistory,
     showHistory,
+    isNodeInGroup,
+    addGroup,
+    removeGroup,
+    setGroupScope,
+    setGroupMember,
+    addSignal,
+    removeSignal,
+    connectSignalTo,
+    disconnectSignalLink,
+    emitSignalOn,
+    openSignalConnect,
+    closeSignalConnect,
+    componentsOn,
+    componentMethodNames,
   }
 })
 
