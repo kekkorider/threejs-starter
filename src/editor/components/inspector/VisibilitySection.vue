@@ -14,7 +14,7 @@ const visible = computed(() => {
 </script>
 
 <template>
-  <Section v-if="node && visible" title="Visibility" section-key="visibility">
+  <Section v-if="node && visible && node.kind !== 'WorldEnvironment'" title="Visibility" section-key="visibility">
     <PropRow label="Visible" :reset="() => store.resetVisible(node.id)">
       <label class="check">
         <input type="checkbox" :checked="node.visible" @change="store.setVisible(node.id, ($event.target as HTMLInputElement).checked)" />

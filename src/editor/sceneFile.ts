@@ -1,4 +1,5 @@
 import { isCameraSettings, type CameraSettings } from './camera'
+import { isEnvironmentSettings, type EnvironmentSettings } from './environment'
 import { GEOMETRY_CATALOG, type GeometryType } from './geometry'
 import type { GridSettings, LightDefaults, NodeKind, SceneSettings, ShadowTypeName } from './state'
 import type { MaterialSide } from './tsl'
@@ -44,6 +45,8 @@ export interface SceneNodeRecord {
   light: LightDefaults | null
   /** Present on camera nodes. Older scene files omit it. */
   camera?: CameraSettings | null
+  /** Present on WorldEnvironment nodes. Older scene files omit it. */
+  environment?: EnvironmentSettings | null
   components: SceneComponentRecord[]
   /** Packed scene placed at this node. Children come from that file. */
   instance?: string | null
@@ -92,6 +95,7 @@ const STORAGE_KEY = 'threejs-starter.scene-files'
 
 const NODE_KINDS = new Set<NodeKind>([
   'Node3D',
+  'WorldEnvironment',
   'MeshInstance3D',
   'Camera3D',
   'DirectionalLight3D',
@@ -204,11 +208,13 @@ export function isSceneFile(value: unknown): value is SceneFile {
 function isSceneSettings(value: unknown): value is SceneSettings {
   if (!value || typeof value !== 'object') return false
   const scene = value as SceneSettings
+  const environment = (scene as { environment?: unknown }).environment
   return typeof scene.background === 'string'
     && finite(scene.backgroundIntensity)
     && finite(scene.environmentIntensity)
     && typeof scene.shadows === 'boolean'
     && SHADOW_TYPES.has(scene.shadowType)
+    && (environment === undefined || environment === null || isEnvironmentSettings(environment))
 }
 
 function isGridSettings(value: unknown): value is GridSettings {
@@ -264,6 +270,7 @@ function isNodeRecord(value: unknown): value is SceneNodeRecord {
     && (record.materialId === null || typeof record.materialId === 'string')
     && (record.light === null || isLight(record.light))
     && (record.camera == null || isCameraSettings(record.camera))
+    && (record.environment == null || isEnvironmentSettings(record.environment))
     && Array.isArray(record.components)
     && record.components.every(isComponentRecord)
     && (record.instance == null || (typeof record.instance === 'string' && record.instance.startsWith('res://')))

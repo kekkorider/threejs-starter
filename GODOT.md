@@ -20,7 +20,7 @@ When a feature lands, move it from **Not yet** into **Already in place**. Do not
 ### Scene tree
 
 - A World root.
-- Node kinds: Node, MeshInstance, Camera, DirectionalLight, OmniLight, SpotLight, HemisphereLight. Visible names do not use a `3D` suffix.
+- Node kinds: Node, WorldEnvironment, MeshInstance, Camera, DirectionalLight, OmniLight, SpotLight, HemisphereLight. Visible names do not use a `3D` suffix.
 - Add, rename, duplicate, delete, and reparent.
 - Nodes created in the editor stay in the scene when you leave `/editor`.
 
@@ -37,6 +37,7 @@ When a feature lands, move it from **Not yet** into **Already in place**. Do not
 - Orbit controls start aimed at `[0, 0, 0]`.
 - Each light has a labeled badge: Directional, Omni, Spot, Hemisphere.
 - A camera draws its frustum and a Camera badge. The badge hides while you look through that camera.
+- A WorldEnvironment draws an Env badge so it can be selected. The badge hides while playing.
 - Directional and spot lights also draw an arrow along the direction they shine (local -Z). Omni and hemisphere lights have no single aim, so they do not get an arrow.
 - Spot lights also draw a cone: a ring where Angle meets Range, eight spokes back to the light, and a center line out to Range. The direction arrow stays. A Range of 0 does not end, so that cone is drawn at a fixed length.
 - Shaded draws the picture. Debug Split replaces it with four labeled quadrants: shaded color (top-left), camera distance (top-right, closer is darker and anything past about 32 m stays white), view-space normals (bottom-left), and motion since the previous frame (bottom-right, still pixels gray).
@@ -50,12 +51,13 @@ When a feature lands, move it from **Not yet** into **Already in place**. Do not
 - Light color, energy, range, spot angle, penumbra, and Look at for directional and spot lights.
 - Camera projection, Perspective or Orthographic. Perspective edits FOV, aspect, focus, film gauge, film offset, and focal length, and shows effective FOV, film width, and film height. Orthographic edits left, right, top, and bottom. Both edit near, far, zoom, layers, and view offset (enabled, full width, full height, offset, width, height). Sync Viewport fits the picture to the window while that camera is the view. Current is the camera Play uses. Preview looks through it in the editor.
 - Visibility, cast shadow, and receive shadow.
-- On World: background color and intensity, environment intensity, shadows on or off, shadow type (Basic, PCF, VSM), and the grid.
+- WorldEnvironment edits the viewport environment. Background mode is Color (a flat color, scaled by energy), Sky (a sky drawn behind the scene, scaled by energy), or Canvas (no 3D background, so the panel behind the viewport shows through). Ambient source is Background, Disabled, Color, or Sky, with color, energy, and sky contribution. Fog is exponential or depth. Shadows are on or off, with type Basic, PCF, or VSM. The node has no transform. The one closest to the root is the one the viewport uses. With none in the tree, the viewport returns to the default environment. The environment map lights the scene and shows in reflections together.
+- On World: the grid.
 - Right-click a value and choose Reset to restore the value it was created with.
 
 ### Scene file
 
-- Save Scene and Load Scene write the node tree, transforms, geometry, materials, light settings, camera settings, component parameters, and the World background, shadows, and grid. Ctrl+Shift+S saves the open scene, and Ctrl+Shift+L loads it. The scene tab shows `(*)` until that save.
+- Save Scene and Load Scene write the node tree, transforms, geometry, materials, light settings, camera settings, each WorldEnvironment, component parameters, and the grid. The scene block still stores the active environment, so a file from before WorldEnvironment nodes existed gains one on load. Saving after the last WorldEnvironment is removed leaves the viewport on the default environment. Ctrl+Shift+S saves the open scene, and Ctrl+Shift+L loads it. The scene tab shows `(*)` until that save.
 - The File system lists saved scenes. The open scene uses that path (`res://World.tscn` until Save Scene As), and the scene tab shows the same file. Ctrl+Alt+S saves to another `res://` path. Click a scene file to open it. An unsaved scene asks before it is replaced.
 - Drag a saved scene onto a node, or choose Scene → Instance Scene (Ctrl+Shift+A), to place it as a child. The instance stays linked to that scene. Make Local copies the nodes into the open scene. A scene cannot instance itself or a scene that instances it.
 
@@ -101,7 +103,6 @@ Build these in an order that keeps the editor usable. A half-wired Godot feature
 
 ### Nodes still missing
 
-- WorldEnvironment as its own node, instead of scene fields on World.
 - Skeleton, bone, and animation player.
 - Audio listener and players.
 - Labels and other 3D UI, only if a scene needs them.

@@ -13,7 +13,8 @@ import {
 } from '../camera'
 import { GEOMETRY_CATALOG, triangleCount, type GeometryType } from '../geometry'
 import type { NodeKind, ToolMode } from '../state'
-import { EditorState, NODE_LABEL, NODE_TYPES, type EditorNode, type GridSettings, type LogLine, type SceneSettings, type ShadowTypeName } from '../state'
+import type { AmbientSource, BackgroundMode, EnvironmentFlagField, EnvironmentNumberField, EnvironmentSettings, EnvironmentView, FogMode } from '../environment'
+import { EditorState, NODE_LABEL, NODE_TYPES, type EditorNode, type GridSettings, type LogLine, type ShadowTypeName } from '../state'
 import { kindClass, kindIcon } from '../lib/format'
 import { COMPONENT_DRAG_PREFIX, INSTANCE_DRAG_PREFIX, type ComponentParameter } from '../behaviors'
 import { EditorHistory, sameScene, type HistoryRow, type SelectionBookmark } from '../history'
@@ -116,6 +117,7 @@ export interface InspectorView {
     lookAt: { enabled: boolean, x: number, y: number, z: number } | null
   } | null
   camera: CameraInspector | null
+  environment: EnvironmentView | null
 }
 
 export interface CreateDraft {
@@ -384,11 +386,6 @@ export const useEditorStore = defineStore('editor', () => {
     return describe(node)
   })
 
-  const sceneSettings = computed((): SceneSettings => {
-    void revision.value
-    return engine.sceneSettings()
-  })
-
   const gridSettings = computed((): GridSettings => {
     void revision.value
     return engine.gridSettings()
@@ -448,6 +445,7 @@ export const useEditorStore = defineStore('editor', () => {
         : null,
       light,
       camera: engine.cameraInspector(node),
+      environment: engine.environmentView(node),
     }
   }
 
@@ -1139,33 +1137,52 @@ export const useEditorStore = defineStore('editor', () => {
     }, { merge: false })
   }
 
-  function setBackground(color: string): void {
-    record('Background', () => {
-      engine.setBackground(color)
-    })
-  }
-
-  function setBackgroundIntensity(value: number): void {
-    record('Background Intensity', () => {
-      engine.setBackgroundIntensity(value)
-    })
-  }
-
-  function setEnvironmentIntensity(value: number): void {
-    record('Environment Intensity', () => {
-      engine.setEnvironmentIntensity(value)
-    })
-  }
-
-  function setShadows(enabled: boolean): void {
-    record('Shadows', () => {
-      engine.setShadows(enabled)
+  function setEnvironmentBackgroundMode(id: string, mode: BackgroundMode): void {
+    record('Background Mode', () => {
+      engine.setEnvironmentBackgroundMode(id, mode)
     }, { merge: false })
   }
 
-  function setShadowType(name: ShadowTypeName): void {
+  function setEnvironmentAmbientSource(id: string, source: AmbientSource): void {
+    record('Ambient Source', () => {
+      engine.setEnvironmentAmbientSource(id, source)
+    }, { merge: false })
+  }
+
+  function setEnvironmentFogMode(id: string, mode: FogMode): void {
+    record('Fog Mode', () => {
+      engine.setEnvironmentFogMode(id, mode)
+    }, { merge: false })
+  }
+
+  function setEnvironmentColor(id: string, field: 'backgroundColor' | 'ambientColor' | 'fogColor', color: string): void {
+    const label = field === 'fogColor' ? 'Fog Color' : field === 'ambientColor' ? 'Ambient Color' : 'Background'
+    record(label, () => {
+      engine.setEnvironmentColor(id, field, color)
+    })
+  }
+
+  function setEnvironmentNumber(id: string, field: EnvironmentNumberField, value: number): void {
+    record('Environment', () => {
+      engine.setEnvironmentNumber(id, field, value)
+    })
+  }
+
+  function setEnvironmentFlag(id: string, field: EnvironmentFlagField, value: boolean): void {
+    record(field === 'fogEnabled' ? 'Fog' : 'Shadows', () => {
+      engine.setEnvironmentFlag(id, field, value)
+    }, { merge: false })
+  }
+
+  function setEnvironmentShadowType(id: string, name: ShadowTypeName): void {
     record('Shadow Type', () => {
-      engine.setShadowType(name)
+      engine.setEnvironmentShadowType(id, name)
+    }, { merge: false })
+  }
+
+  function resetEnvironment(id: string, field: keyof EnvironmentSettings): void {
+    record('Reset Environment', () => {
+      engine.resetEnvironment(id, field)
     }, { merge: false })
   }
 
@@ -1208,12 +1225,6 @@ export const useEditorStore = defineStore('editor', () => {
   function resetGrid(field: 'visible' | 'size' | 'divisions' | 'center' | 'color' | 'position'): void {
     record('Reset Grid', () => {
       engine.resetGrid(field)
-    }, { merge: false })
-  }
-
-  function resetScene(field: 'background' | 'backgroundIntensity' | 'environmentIntensity' | 'shadows' | 'shadowType'): void {
-    record('Reset Scene', () => {
-      engine.resetScene(field)
     }, { merge: false })
   }
 
@@ -2093,6 +2104,8 @@ export const useEditorStore = defineStore('editor', () => {
             source: draft.source,
             flags: { ...DEFAULT_FLAGS },
           })
+        } else if (draft.kind === 'WorldEnvironment') {
+          engine.createWorldEnvironment(parentId, draft.name)
         } else if (draft.kind === 'Camera3D') {
           engine.createCamera({
             name: draft.name,
@@ -2595,7 +2608,6 @@ export const useEditorStore = defineStore('editor', () => {
     openScripts,
     selected,
     selectedComponent,
-    sceneSettings,
     gridSettings,
     nodeMatches,
     select,
@@ -2627,11 +2639,14 @@ export const useEditorStore = defineStore('editor', () => {
     setVisible,
     setCastShadow,
     setReceiveShadow,
-    setBackground,
-    setBackgroundIntensity,
-    setEnvironmentIntensity,
-    setShadows,
-    setShadowType,
+    setEnvironmentBackgroundMode,
+    setEnvironmentAmbientSource,
+    setEnvironmentFogMode,
+    setEnvironmentColor,
+    setEnvironmentNumber,
+    setEnvironmentFlag,
+    setEnvironmentShadowType,
+    resetEnvironment,
     setGridVisible,
     setGridSize,
     setGridDivisions,
@@ -2639,7 +2654,6 @@ export const useEditorStore = defineStore('editor', () => {
     setGridColor,
     setGridPosition,
     resetGrid,
-    resetScene,
     setGeometryType,
     setGeometryParam,
     resetGeometryType,

@@ -8,7 +8,7 @@ import GeometrySection from './inspector/GeometrySection.vue'
 import GridSection from './inspector/GridSection.vue'
 import LightSection from './inspector/LightSection.vue'
 import MaterialSection from './inspector/MaterialSection.vue'
-import SceneSection from './inspector/SceneSection.vue'
+import EnvironmentSection from './inspector/EnvironmentSection.vue'
 import TransformSection from './inspector/TransformSection.vue'
 import VisibilitySection from './inspector/VisibilitySection.vue'
 import Icon from './Icon.vue'
@@ -55,7 +55,7 @@ function onName(event: Event): void {
           <span>Instance of {{ node.instancePath }}</span>
           <button type="button" class="btn" @click="store.makeLocal(node.id)">Make Local</button>
         </div>
-        <SceneSection />
+        <EnvironmentSection />
         <GridSection />
         <TransformSection />
         <CameraSection />
