@@ -28,6 +28,12 @@ $ pnpm dev
 
 then open a new browser window and navigate to `http://localhost:5173`
 
+## Editor
+
+The scene editor is the Vue app at `/editor`.
+The manual is the [GitHub wiki](https://github.com/kekkorider/threejs-starter/wiki).
+The same pages are in [`wiki/Home.md`](wiki/Home.md).
+
 ## Build
 
 ```shell
