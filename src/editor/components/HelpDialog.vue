@@ -37,7 +37,14 @@ Drag a component onto an object to add it. Double-click a component to edit it i
 The Script dock follows the selected node. Attach, edit, and detach its script there.
 TSL in the bottom panel stays the material script.
 Click the script icon on a scene-tree row to open that node's script.
-Drag the colored x / y / z labels to scrub a value.`
+Drag the colored x / y / z labels to scrub a value.
+
+The Node dock is under the Inspector.
+Groups are Local (this scene) or Global (the project).
+isInGroup(object, name) checks membership.
+isInLocalGroup and isInGlobalGroup also check the scope.
+Signals use eventemitter3.
+emitSignal sends one. connectSignal and isSignalConnected use the same emitter.`
 
 const title = computed(() => store.helpTopic === 'tsl' ? 'TSL Material Reference' : 'Editor Shortcuts')
 const body = computed(() => store.helpTopic === 'tsl' ? TSL_HELP : shortcuts)

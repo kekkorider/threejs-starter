@@ -8,12 +8,26 @@ import {
   applyParameters,
   compileComponent,
   componentTemplate,
+  mergedMethodNames,
   parameterFields,
   readParameters,
   uniqueIdentifier,
   withClassName,
   type ComponentParameter,
 } from './behaviors'
+import { GroupCatalog, copyGroupNames, membershipMatches, normalizeGroupName, type GroupScope } from './groups'
+import { bindSceneRuntime, type SceneElement } from './sceneApi'
+import {
+  SignalBus,
+  cloneSignals,
+  isBuiltinSignal,
+  nodeHasSignal,
+  normalizeSignalName,
+  parseSignalArgs,
+  type SignalDefinition,
+  type SignalLink,
+  type SignalListener,
+} from './signals'
 
 import {
   GEOMETRY_CATALOG,
@@ -146,6 +160,10 @@ export interface EditorNode {
   instancePath: string | null
   /** Set on nodes created from an instance, so the parent scene stores the link. */
   instanceOwnerId: string | null
+  /** Group names this node belongs to. Scope lives on the group, not on the node. */
+  groups: string[]
+  /** Custom signals. Built-in signals are always available. */
+  signals: SignalDefinition[]
   defaults: NodeDefaults
 }
 
@@ -339,8 +357,21 @@ export class EditorState {
   private readonly marqueePoint = new THREE.Vector3()
   private readonly marqueeView = new THREE.Vector3()
   private idCounter = 1
+  /** Local groups for the open scene, and global groups for the project. */
+  private readonly groupCatalog = new GroupCatalog()
+  /** eventemitter3 emitters and saved signal links. */
+  private readonly signalBus = new SignalBus()
+  private signalDepth = 0
 
   constructor() {
+    bindSceneRuntime({
+      isInGroup: (element, group, scope) => this.isInGroup(element, group, scope),
+      nodesInGroup: (group, scope) => this.nodesInGroup(group, scope),
+      emitSignal: (element, signal, args) => this.emitFromCode(element, signal, args),
+      connectSignal: (element, signal, listener) => this.connectFromCode(element, signal, listener),
+      disconnectSignal: (element, signal, listener) => this.disconnectFromCode(element, signal, listener),
+      isSignalConnected: (element, signal, listener) => this.isSignalConnected(element, signal, listener),
+    })
     for (const builtin of BUILTIN_COMPONENTS) {
       const id = `cmp${this.idCounter++}`
       this.components.set(id, {
@@ -572,9 +603,10 @@ export class EditorState {
     const object = new THREE.Group()
     object.name = this.uniqueName(sceneFileName(path).replace(/\.tscn$/, '') || 'Scene')
     parent.object.add(object)
-    const node = this.addNode(object, parent.id, 'Node3D', false)
+    const node = this.addNode(object, parent.id, 'Node3D', false, { silent: true })
     node.instancePath = path
     this.expandInstance(path, node.id, new Set([this.scenePath]))
+    this.enterTree(node)
     this.syncEnvironment()
     this.log(`Instanced ${path}`)
     this.select(node.id)
@@ -803,6 +835,7 @@ export class EditorState {
   }
 
   setPlaying(playing: boolean): void {
+    const starting = playing && !this.playing
     this.playing = playing
     this.syncViewCamera()
     this.updateCameras()
@@ -812,6 +845,7 @@ export class EditorState {
     else this.syncGizmo()
     this.updateSelectionBox()
     if (playing && this.paused) this.setPaused(false)
+    if (starting) this.emitReady()
   }
 
   setPaused(paused: boolean): void {
@@ -1148,11 +1182,15 @@ export class EditorState {
     const node = this.nodes.get(id)
     if (!node || node.isRoot) return
     const ids = this.collectIds(node)
+    if (!this.restoring) {
+      for (const childId of [...ids].reverse()) this.emitNode(childId, 'tree_exiting')
+    }
     if (this.previewCameraId && ids.includes(this.previewCameraId)) this.previewCameraId = null
     this.releaseCameras(node.object)
     this.releaseEnvironment(node.object)
     this.releaseLights(node.object)
     for (const childId of ids) this.forgetNodeComponents(childId)
+    for (const childId of ids) this.signalBus.removeNode(childId)
     destroy(node.object)
     for (const childId of ids) this.nodes.delete(childId)
     const parent = node.parentId ? this.nodes.get(node.parentId) : undefined
@@ -1210,8 +1248,10 @@ export class EditorState {
       if (compiled.name !== resource.name && this.componentNames().has(compiled.name)) {
         return `A component named ${compiled.name} already exists.`
       }
+      const previousName = resource.name
       resource.builtin = false
       resource.name = compiled.name
+      if (previousName !== resource.name) this.signalBus.renameComponent(previousName, resource.name)
       resource.source = source
       resource.ctor = compiled.ctor
       resource.error = null
@@ -1272,9 +1312,11 @@ export class EditorState {
     const instance = this.componentInstances.get(instanceId)
     if (!instance) return
     const node = this.nodes.get(instance.nodeId)
+    const componentName = instance.name
     destroy(instance.behaviour)
     this.componentInstances.delete(instanceId)
     if (node) node.componentIds = node.componentIds.filter((id) => id !== instanceId)
+    if (node && !this.nodeHasComponent(node, componentName)) this.signalBus.disconnectComponent(node.id, componentName)
     this.log(`Removed ${instance.name}${node ? ` from ${node.name}` : ''}`)
     this.touchScene()
   }
@@ -1327,9 +1369,10 @@ export class EditorState {
   rename(id: string, name: string): void {
     const node = this.nodes.get(id)
     const next = name.trim()
-    if (!node || !next || node.isRoot) return
+    if (!node || !next || node.isRoot || node.name === next) return
     node.name = next
     node.object.name = next
+    this.emitNode(node.id, 'renamed', [next])
     this.touchScene()
   }
 
@@ -1372,9 +1415,164 @@ export class EditorState {
 
   setVisible(id: string, visible: boolean): void {
     const node = this.nodes.get(id)
-    if (!node) return
+    if (!node || node.object.visible === visible) return
     node.object.visible = visible
+    this.emitNode(node.id, 'visibility_changed')
     this.touchScene()
+  }
+
+  listGroups(): { name: string, description: string, scope: GroupScope }[] {
+    return this.groupCatalog.list()
+  }
+
+  isInGroup(element: SceneElement, group: string, scope?: GroupScope): boolean {
+    const node = this.resolveNode(element)
+    if (!node) return false
+    return membershipMatches(node.groups, group, this.groupCatalog.scopeOf(group), scope)
+  }
+
+  /** Objects in the group, in scene-tree order. */
+  nodesInGroup(group: string, scope?: GroupScope): THREE.Object3D[] {
+    const found: THREE.Object3D[] = []
+    const walk = (id: string): void => {
+      const node = this.nodes.get(id)
+      if (!node) return
+      if (this.isInGroup(node, group, scope)) found.push(node.object)
+      for (const childId of node.childIds) walk(childId)
+    }
+    if (this.rootId) walk(this.rootId)
+    return found
+  }
+
+  addGroup(rawName: string, scope: GroupScope, rawDescription = ''): string | null {
+    const error = this.groupCatalog.add(rawName, scope, rawDescription)
+    if (error) return error
+    const name = normalizeGroupName(rawName)
+    this.log(`Added ${scope} group ${name ?? rawName.trim()}`)
+    this.touchScene()
+    return null
+  }
+
+  removeGroup(group: string): string | null {
+    const name = normalizeGroupName(group)
+    if (!name || !this.groupCatalog.remove(name)) return 'Create the group first.'
+    for (const node of this.nodes.values()) {
+      if (node.groups.includes(name)) node.groups = node.groups.filter((item) => item !== name)
+    }
+    this.log(`Removed group ${name}`)
+    this.touchScene()
+    return null
+  }
+
+  setGroupScope(group: string, scope: GroupScope): string | null {
+    const before = this.groupCatalog.scopeOf(group)
+    const error = this.groupCatalog.setScope(group, scope)
+    if (error) return error
+    if (before === scope) return null
+    const name = normalizeGroupName(group)
+    if (name) this.log(`${name} is now a ${scope} group`)
+    this.touchScene()
+    return null
+  }
+
+  setGroupMember(nodeId: string, group: string, member: boolean): string | null {
+    const node = this.nodes.get(nodeId)
+    if (!node) return 'Select a node.'
+    if (node.instanceOwnerId) return 'Change groups on this node in its scene.'
+    const name = normalizeGroupName(group)
+    if (!name || !this.groupCatalog.scopeOf(name)) return 'Create the group first.'
+    const has = node.groups.includes(name)
+    if (member === has) return null
+    node.groups = member ? [...node.groups, name] : node.groups.filter((item) => item !== name)
+    this.touchScene()
+    return null
+  }
+
+  listSignals(nodeId: string): { name: string, args: string[], builtin: boolean }[] {
+    const node = this.nodes.get(nodeId)
+    if (!node) return []
+    const builtin = [
+      { name: 'ready', args: [] as string[], builtin: true },
+      { name: 'tree_entered', args: [] as string[], builtin: true },
+      { name: 'tree_exiting', args: [] as string[], builtin: true },
+      { name: 'renamed', args: ['name'], builtin: true },
+      { name: 'visibility_changed', args: [] as string[], builtin: true },
+    ]
+    const custom = node.signals.map((signal) => ({ name: signal.name, args: [...signal.args], builtin: false }))
+    return [...builtin, ...custom]
+  }
+
+  listSignalLinks(nodeId: string): { id: string, signal: string, toId: string, toName: string, component: string, method: string }[] {
+    return this.signalBus.links
+      .filter((link) => link.fromId === nodeId)
+      .map((link) => ({
+        id: link.id,
+        signal: link.signal,
+        toId: link.toId,
+        toName: this.nodes.get(link.toId)?.name ?? 'Node',
+        component: link.component,
+        method: link.method,
+      }))
+  }
+
+  componentMethodNames(instanceId: string, source?: string): string[] {
+    const instance = this.componentInstances.get(instanceId)
+    if (!instance) return []
+    const text = source ?? this.components.get(instance.resourceId)?.source
+    return mergedMethodNames(instance.behaviour, text)
+  }
+
+  addSignal(nodeId: string, rawName: string, rawArgs: string): string | null {
+    const node = this.editableNode(nodeId)
+    if (!node) return 'Change signals on this node in its scene.'
+    const name = normalizeSignalName(rawName)
+    if (!name) return 'Use a signal name that starts with a letter.'
+    if (isBuiltinSignal(name) || node.signals.some((signal) => signal.name === name)) return `Signal ${name} already exists.`
+    const args = parseSignalArgs(rawArgs)
+    if (!args) return 'Argument names start with a letter. Separate them with commas.'
+    node.signals.push({ name, args })
+    this.log(`Added signal ${name} on ${node.name}`)
+    this.touchScene()
+    return null
+  }
+
+  removeSignal(nodeId: string, signal: string): string | null {
+    const node = this.editableNode(nodeId)
+    const name = normalizeSignalName(signal)
+    if (!node || !name) return 'Change signals on this node in its scene.'
+    if (isBuiltinSignal(name)) return 'Built-in signals stay on every node.'
+    if (!node.signals.some((item) => item.name === name)) return `Signal ${name} does not exist.`
+    node.signals = node.signals.filter((item) => item.name !== name)
+    for (const link of this.signalBus.links.filter((item) => item.fromId === node.id && item.signal === name)) {
+      this.signalBus.removeLink(link.id)
+    }
+    this.log(`Removed signal ${name} from ${node.name}`)
+    this.touchScene()
+    return null
+  }
+
+  connectSignalTo(fromId: string, signal: string, toId: string, component: string, method: string): string | null {
+    return this.addSignalLink(fromId, signal, toId, component, method, false)
+  }
+
+  disconnectSignalLink(linkId: string): string | null {
+    const link = this.signalBus.removeLink(linkId)
+    if (!link) return 'That connection is already gone.'
+    const from = this.nodes.get(link.fromId)
+    this.log(`Disconnected ${link.signal}${from ? ` on ${from.name}` : ''}`)
+    this.touchScene()
+    return null
+  }
+
+  emitSignalOn(nodeId: string, signal: string): string | null {
+    const node = this.nodes.get(nodeId)
+    const name = normalizeSignalName(signal)
+    if (!node || !name || !nodeHasSignal(node.signals, name)) return 'Select a signal on this node.'
+    const delivered = this.emitNode(node.id, name)
+    this.log(delivered
+      ? `Emitted ${name} on ${node.name}.`
+      : `Emitted ${name} on ${node.name}. No listener is connected.`)
+    return null
   }
 
   setCastShadow(id: string, enabled: boolean): void {
@@ -1799,6 +1997,189 @@ export class EditorState {
     return hits
   }
 
+  private editableNode(id: string): EditorNode | null {
+    const node = this.nodes.get(id)
+    if (!node || node.instanceOwnerId) return null
+    return node
+  }
+
+  private nodeHasComponent(node: EditorNode, component: string): boolean {
+    return node.componentIds.some((id) => this.componentInstances.get(id)?.name === component)
+  }
+
+  private resolveNode(element: SceneElement): EditorNode | null {
+    if (typeof element === 'string') return this.nodes.get(element) ?? null
+    if (!element || typeof element !== 'object') return null
+    if (typeof element.id === 'string' && this.nodes.has(element.id)) return this.nodes.get(element.id) ?? null
+    const editorId = element.userData?.editorId
+    if (typeof editorId === 'string') return this.nodes.get(editorId) ?? null
+    return null
+  }
+
+  private emitNode(nodeId: string, signal: string, args: readonly unknown[] = []): boolean {
+    if (!this.nodes.has(nodeId)) return false
+    const name = normalizeSignalName(signal)
+    if (!name || !nodeHasSignal(this.nodes.get(nodeId)?.signals ?? [], name)) return false
+    if (this.signalDepth > 8) {
+      this.log('Signal emit stopped after 8 nested calls.', 'warn')
+      return false
+    }
+    this.signalDepth += 1
+    try {
+      return this.signalBus.emit(nodeId, name, args)
+    } finally {
+      this.signalDepth -= 1
+    }
+  }
+
+  private enterTree(node: EditorNode): void {
+    if (this.restoring) return
+    this.emitNode(node.id, 'tree_entered')
+  }
+
+  private emitReady(): void {
+    for (const node of this.nodes.values()) this.emitNode(node.id, 'ready')
+  }
+
+  private emitFromCode(element: SceneElement, signal: string, args: readonly unknown[]): boolean {
+    const node = this.resolveNode(element)
+    if (!node) return false
+    return this.emitNode(node.id, signal, args)
+  }
+
+  private connectFromCode(element: SceneElement, signal: string, listener: SignalListener): void {
+    const node = this.resolveNode(element)
+    const name = normalizeSignalName(signal)
+    if (!node || !name || !nodeHasSignal(node.signals, name)) return
+    this.signalBus.connect(node.id, name, listener)
+  }
+
+  private disconnectFromCode(element: SceneElement, signal: string, listener: SignalListener): void {
+    const node = this.resolveNode(element)
+    const name = normalizeSignalName(signal)
+    if (!node || !name) return
+    this.signalBus.disconnect(node.id, name, listener)
+  }
+
+  private isSignalConnected(element: SceneElement, signal: string, listener?: SignalListener): boolean {
+    const node = this.resolveNode(element)
+    const name = normalizeSignalName(signal)
+    if (!node || !name || !nodeHasSignal(node.signals, name)) return false
+    return this.signalBus.isConnected(node.id, name, listener)
+  }
+
+  private addSignalLink(
+    fromId: string,
+    signal: string,
+    toId: string,
+    component: string,
+    method: string,
+    quiet: boolean,
+    allowInstance = false,
+  ): string | null {
+    const from = this.nodes.get(fromId)
+    const to = this.nodes.get(toId)
+    if (!from || !to) return 'Select a node.'
+    if (!allowInstance && (from.instanceOwnerId || to.instanceOwnerId)) {
+      return 'Make the instanced scene local before you connect this signal.'
+    }
+    const name = normalizeSignalName(signal)
+    const methodName = normalizeSignalName(method)
+    const componentName = normalizeSignalName(component)
+    if (!name || !nodeHasSignal(from.signals, name)) return `${from.name} has no signal ${signal}.`
+    if (!methodName || !componentName) return 'Choose a component method.'
+    const duplicate = this.signalBus.links.some((link) => (
+      link.fromId === fromId
+      && link.signal === name
+      && link.toId === toId
+      && link.component === componentName
+      && link.method === methodName
+    ))
+    if (duplicate) return 'That connection already exists.'
+    const instance = to.componentIds
+      .map((id) => this.componentInstances.get(id))
+      .find((item) => item?.name === componentName)
+    if (!instance) return `${to.name} has no ${componentName}.`
+    const fn = (instance.behaviour as unknown as Record<string, unknown>)[methodName]
+    if (typeof fn !== 'function') return `Apply the script. ${componentName} has no method ${methodName} yet.`
+    const link: SignalLink = {
+      id: `lnk${this.idCounter++}`,
+      signal: name,
+      fromId,
+      toId,
+      component: componentName,
+      method: methodName,
+    }
+    this.signalBus.addLink(link, (item, args) => this.deliver(item, args))
+    if (!quiet) this.log(`Connected ${name} on ${from.name} to ${to.name}.${componentName}.${methodName}`)
+    this.touchScene()
+    return null
+  }
+
+  private deliver(link: SignalLink, args: unknown[]): void {
+    const node = this.nodes.get(link.toId)
+    if (!node) return
+    const instance = node.componentIds
+      .map((id) => this.componentInstances.get(id))
+      .find((item) => item?.name === link.component)
+    if (!instance) {
+      this.log(`${node.name} has no ${link.component} for signal ${link.signal}.`, 'warn')
+      return
+    }
+    const fn = (instance.behaviour as unknown as Record<string, unknown>)[link.method]
+    if (typeof fn !== 'function') {
+      this.log(`${link.component} has no method ${link.method}.`, 'warn')
+      return
+    }
+    const from = this.nodes.get(link.fromId)
+    this.log(`${from?.name ?? 'Node'}.${link.signal} called ${link.component}.${link.method}.`)
+    try {
+      fn.apply(instance.behaviour, args)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      this.log(`${link.component}.${link.method} failed: ${message}`, 'error')
+    }
+  }
+
+  private bindConnections(records: SceneFile['connections'], runtime: Map<string, string>): void {
+    if (!records) return
+    for (const record of records) {
+      const fromId = runtime.get(record.fromId)
+      const toId = runtime.get(record.toId)
+      if (!fromId || !toId) continue
+      const error = this.addSignalLink(fromId, record.signal, toId, record.component, record.method, true, true)
+      if (error) this.log(error, 'warn')
+    }
+  }
+
+  private connectionRecords(runtimeToFile: Map<string, string>): SceneFile['connections'] {
+    const records: NonNullable<SceneFile['connections']> = []
+    for (const link of this.signalBus.links) {
+      const fromId = runtimeToFile.get(link.fromId)
+      const toId = runtimeToFile.get(link.toId)
+      if (!fromId || !toId) continue
+      records.push({
+        signal: link.signal,
+        fromId,
+        toId,
+        component: link.component,
+        method: link.method,
+      })
+    }
+    return records
+  }
+
+  private duplicateLinks(copies: Map<string, string>): void {
+    const existing = this.signalBus.links.slice()
+    for (const link of existing) {
+      const fromId = copies.get(link.fromId)
+      if (!fromId) continue
+      const toId = copies.get(link.toId) ?? link.toId
+      if (!this.nodes.has(toId)) continue
+      this.addSignalLink(fromId, link.signal, toId, link.component, link.method, true, true)
+    }
+  }
+
   private touchScene(): void {
     if (this.restoring) return
     this.sceneDirty = true
@@ -1816,7 +2197,7 @@ export class EditorState {
 
   /** Replace the open scene with a history snapshot and keep the saved-file baseline. */
   restoreHistory(file: SceneFile): void {
-    this.applyScene(file, true)
+    this.applyScene(file, true, true)
     this.sceneDirty = this.cleanCapture === null || fingerprint(file) !== this.cleanCapture
   }
 
@@ -1921,9 +2302,11 @@ export class EditorState {
     }
 
     const nodes: SceneNodeRecord[] = []
+    const runtimeToFile = new Map<string, string>()
     const walk = (node: EditorNode, parentFileId: string | null): void => {
       if (node.instanceOwnerId) return
       const id = parentFileId === null ? 'root' : `n${nodes.length}`
+      runtimeToFile.set(node.id, id)
       nodes.push({
         id,
         name: node.name,
@@ -1946,6 +2329,8 @@ export class EditorState {
         environment: node.kind === 'WorldEnvironment' ? copyEnvironmentSettings(readEnvironment(node.object) ?? defaultEnvironmentSettings()) : null,
         components: this.componentRecords(node),
         instance: node.instancePath,
+        groups: [...node.groups],
+        signals: cloneSignals(node.signals),
       })
       if (node.instancePath) return
       for (const childId of node.childIds) {
@@ -1965,14 +2350,21 @@ export class EditorState {
       geometries,
       materials,
       nodes,
+      groups: this.groupCatalog.localRecords(),
+      globalGroups: this.groupCatalog.globalRecords(),
+      connections: this.connectionRecords(runtimeToFile),
     }
   }
 
-  private applyScene(file: SceneFile, preserveNames = false): void {
+  private applyScene(file: SceneFile, preserveNames = false, replaceGlobals = false): void {
     const root = this.nodes.get(this.rootId)
     if (!root) throw new Error('Scene root is missing.')
     this.restoring = true
     try {
+      this.signalBus.clear()
+      this.groupCatalog.replaceLocal(file.groups ?? [])
+      if (replaceGlobals) this.groupCatalog.replaceGlobal(file.globalGroups ?? [])
+      else this.groupCatalog.mergeGlobal(file.globalGroups ?? [])
       this.controls?.detach()
       this.previewCameraId = null
       if (this.playing) this.setPlaying(false)
@@ -2014,7 +2406,12 @@ export class EditorState {
       if (rootRecord) {
         runtime.set(rootRecord.id, this.rootId)
         root.object.visible = rootRecord.visible
+        root.groups = copyGroupNames(rootRecord.groups)
+        root.signals = cloneSignals(rootRecord.signals)
         this.applyComponents(root, rootRecord.components)
+      } else {
+        root.groups = []
+        root.signals = []
       }
       for (const record of file.nodes) {
         if (!record.parentId) continue
@@ -2033,6 +2430,7 @@ export class EditorState {
           front: true,
         })
       }
+      this.bindConnections(file.connections, runtime)
       this.syncEnvironment(true)
       this.enforceSingleCurrent()
       this.syncViewCamera()
@@ -2146,7 +2544,11 @@ export class EditorState {
     }
 
     parent.object.add(object)
-    const node = this.addNode(object, parent.id, record.kind, false)
+    const node = this.addNode(object, parent.id, record.kind, false, {
+      groups: copyGroupNames(record.groups),
+      signals: cloneSignals(record.signals),
+      silent: true,
+    })
     node.geometryId = geometryId
     node.materialId = materialId
     if (record.kind === 'DirectionalLight3D' || record.kind === 'SpotLight3D') this.aimLight(object)
@@ -2156,6 +2558,7 @@ export class EditorState {
       this.expandInstance(record.instance, node.id, stack)
     }
     this.captureDefaults(node)
+    this.enterTree(node)
     return node
   }
 
@@ -2205,6 +2608,7 @@ export class EditorState {
       created.instanceOwnerId = holderId
       runtime.set(record.id, created.id)
     }
+    this.bindConnections(file.connections, runtime)
   }
 
   private instanceCycle(path: string, stack: Set<string>): boolean {
@@ -2734,6 +3138,8 @@ export class EditorState {
       componentIds: [],
       instancePath: null,
       instanceOwnerId: null,
+      groups: [],
+      signals: [],
       defaults: this.defaultsFrom(object),
     }
     this.nodes.set(id, node)
@@ -2749,7 +3155,13 @@ export class EditorState {
     return id
   }
 
-  private addNode(object: THREE.Object3D, parentId: string, kind: NodeKind, imported: boolean): EditorNode {
+  private addNode(
+    object: THREE.Object3D,
+    parentId: string,
+    kind: NodeKind,
+    imported: boolean,
+    extras?: { groups?: string[], signals?: SignalDefinition[], silent?: boolean },
+  ): EditorNode {
     const id = `node${this.idCounter++}`
     object.userData.editorId = id
     object.userData.editorKind = kind
@@ -2767,6 +3179,8 @@ export class EditorState {
       componentIds: [],
       instancePath: null,
       instanceOwnerId: null,
+      groups: extras?.groups ? [...extras.groups] : [],
+      signals: cloneSignals(extras?.signals),
       defaults: this.defaultsFrom(object),
     }
     this.nodes.set(id, node)
@@ -2776,10 +3190,16 @@ export class EditorState {
     if (kind === 'WorldEnvironment') attachEnvironmentIcon(object)
     this.captureDefaults(node)
     this.touchScene()
+    if (!extras?.silent) this.enterTree(node)
     return node
   }
 
-  private cloneNode(node: EditorNode, parentId: string, ownerId: string | null): EditorNode {
+  private cloneNode(
+    node: EditorNode,
+    parentId: string,
+    ownerId: string | null,
+    copies: Map<string, string>,
+  ): EditorNode {
     const object = node.object.clone(false)
     object.name = this.uniqueName(node.name)
     if (node.kind === 'WorldEnvironment') {
@@ -2787,7 +3207,12 @@ export class EditorState {
     }
     const parent = this.nodes.get(parentId)
     parent?.object.add(object)
-    const copy = this.addNode(object, parentId, node.kind, node.imported)
+    const copy = this.addNode(object, parentId, node.kind, node.imported, {
+      groups: node.groups,
+      signals: node.signals,
+      silent: true,
+    })
+    copies.set(node.id, copy.id)
     copy.instancePath = node.instancePath
     copy.instanceOwnerId = ownerId
     copy.geometryId = node.geometryId
@@ -2804,12 +3229,13 @@ export class EditorState {
     const childOwner = node.instancePath ? copy.id : ownerId
     for (const childId of node.childIds) {
       const child = this.nodes.get(childId)
-      if (child) this.cloneNode(child, copy.id, childOwner)
+      if (child) this.cloneNode(child, copy.id, childOwner, copies)
     }
     for (const componentId of node.componentIds) {
       const instance = this.componentInstances.get(componentId)
       if (instance) this.attachComponent(instance.resourceId, copy.id)
     }
+    this.enterTree(copy)
     return copy
   }
 
@@ -3171,7 +3597,9 @@ export class EditorState {
   private copyNode(id: string): EditorNode | null {
     const node = this.nodes.get(id)
     if (!node || node.isRoot || !node.parentId) return null
-    const copy = this.cloneNode(node, node.parentId, node.instanceOwnerId)
+    const copies = new Map<string, string>()
+    const copy = this.cloneNode(node, node.parentId, node.instanceOwnerId, copies)
+    this.duplicateLinks(copies)
     if ((copy.object as THREE.Mesh).isMesh) copy.object.position.x += 0.45
     this.clearDuplicatedCurrent(copy)
     this.captureDefaults(copy)
