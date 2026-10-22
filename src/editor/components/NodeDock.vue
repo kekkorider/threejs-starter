@@ -28,12 +28,13 @@ const signals = computed(() => {
 const checks = computed(() => {
   const id = store.selectedId
   if (!id) return []
-  return store.groupDefinitions.map((group) => {
-    const member = store.isNodeInGroup(id, group.name)
-    const local = store.isNodeInGroup(id, group.name, 'local')
-    const global = store.isNodeInGroup(id, group.name, 'global')
-    return `${group.name}: isInGroup ${member}, isInLocalGroup ${local}, isInGlobalGroup ${global}`
-  })
+  const lines: string[] = []
+  for (const group of store.groupDefinitions) {
+    lines.push(`${group.name} isInGroup ${store.isNodeInGroup(id, group.name)}`)
+    lines.push(`${group.name} isInLocalGroup ${store.isNodeInGroup(id, group.name, 'local')}`)
+    lines.push(`${group.name} isInGlobalGroup ${store.isNodeInGroup(id, group.name, 'global')}`)
+  }
+  return lines
 })
 
 function linksFor(signal: string) {
@@ -233,7 +234,7 @@ function onScope(name: string, event: Event): void {
   font-family: ui-monospace, Consolas, monospace;
   font-size: 11px;
   line-height: 1.45;
-  white-space: pre-wrap;
+  white-space: pre;
   user-select: text;
 }
 .signal-block + .signal-block { border-top: 1px solid #262626; }
