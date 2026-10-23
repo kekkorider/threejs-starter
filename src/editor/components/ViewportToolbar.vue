@@ -53,12 +53,17 @@ function onDocumentPointer(event: PointerEvent): void {
   store.closePreviewMenu()
 }
 
+function openPreviewMenu(event: PointerEvent): void {
+  event.stopPropagation()
+  store.togglePreviewMenu()
+}
+
 onMounted(() => {
-  document.addEventListener('pointerdown', onDocumentPointer)
+  document.addEventListener('pointerdown', onDocumentPointer, true)
 })
 
 onUnmounted(() => {
-  document.removeEventListener('pointerdown', onDocumentPointer)
+  document.removeEventListener('pointerdown', onDocumentPointer, true)
 })
 </script>
 
@@ -126,12 +131,12 @@ onUnmounted(() => {
       </button>
       <button
         type="button"
-        class="tool-btn"
+        class="tool-btn preview-menu-btn"
         :class="{ active: store.previewMenuOpen }"
         title="Edit preview sun and environment settings"
-        @click="store.togglePreviewMenu()"
+        @pointerdown="openPreviewMenu"
       >
-        <Icon name="menu" />
+        <Icon name="more" />
       </button>
       <PreviewSunEnvMenu v-if="store.previewMenuOpen" />
     </div>

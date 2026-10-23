@@ -49,4 +49,5 @@ const PATHS: Record<string, string> = {
   forward: `<path d="M6 3.2 10.8 8 6 12.8" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>`,
   eye: `<path d="M1.6 8S4 4.2 8 4.2 14.4 8 14.4 8 12 11.8 8 11.8 1.6 8 1.6 8Z" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="8" cy="8" r="1.6" fill="currentColor"/>`,
   menu: `<path d="M3 4.2h10M3 8h10M3 11.8h10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>`,
+  more: `<circle cx="3.2" cy="8" r="1.15" fill="currentColor"/><circle cx="8" cy="8" r="1.15" fill="currentColor"/><circle cx="12.8" cy="8" r="1.15" fill="currentColor"/>`,
 }
