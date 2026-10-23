@@ -41,6 +41,7 @@ When a feature lands, move it from **Not yet** into **Already in place**. Do not
 - Directional and spot lights also draw an arrow along the direction they shine (local -Z). Omni and hemisphere lights have no single aim, so they do not get an arrow.
 - Spot lights also draw a cone: a ring where Angle meets Range, eight spokes back to the light, and a center line out to Range. The direction arrow stays. A Range of 0 does not end, so that cone is drawn at a fixed length.
 - Shaded draws the picture. Debug Split replaces it with four labeled quadrants: shaded color (top-left), camera distance (top-right, closer is darker and anything past about 32 m stays white), view-space normals (bottom-left), and motion since the previous frame (bottom-right, still pixels gray).
+- Preview sun and preview environment fill the viewport when the scene has no DirectionalLight or no WorldEnvironment. Toolbar toggles turn each on or off. The three-dot menu edits color, energy, altitude, azimuth, shadows, and environment fields. Settings are project-wide in localStorage. Play and leaving the editor hide both. Add Sun to Scene and Add Environment to Scene create real nodes from those settings. Shift on either button adds both.
 
 ### Inspector
 
@@ -51,7 +52,7 @@ When a feature lands, move it from **Not yet** into **Already in place**. Do not
 - Light color, energy, range, spot angle, penumbra, and Look at for directional and spot lights.
 - Camera projection, Perspective or Orthographic. Perspective edits FOV, aspect, focus, film gauge, film offset, and focal length, and shows effective FOV, film width, and film height. Orthographic edits left, right, top, and bottom. Both edit near, far, zoom, layers, and view offset (enabled, full width, full height, offset, width, height). Sync Viewport fits the picture to the window while that camera is the view. Current is the camera Play uses. Preview looks through it in the editor.
 - Visibility, cast shadow, and receive shadow.
-- WorldEnvironment edits the viewport environment. Background mode is Color (a flat color, scaled by energy), Sky (a sky drawn behind the scene, scaled by energy), or Canvas (no 3D background, so the panel behind the viewport shows through). Ambient source is Background, Disabled, Color, or Sky, with color, energy, and sky contribution. Fog is exponential or depth. Shadows are on or off, with type Basic, PCF, or VSM. The node has no transform. The one closest to the root is the one the viewport uses. With none in the tree, the viewport returns to the default environment. The environment map lights the scene and shows in reflections together.
+- WorldEnvironment edits the viewport environment. Background mode is Color (a flat color, scaled by energy), Sky (a sky drawn behind the scene, scaled by energy), or Canvas (no 3D background, so the panel behind the viewport shows through). Ambient source is Background, Disabled, Color, or Sky, with color, energy, and sky contribution. Fog is exponential or depth. Shadows are on or off, with type Basic, PCF, or VSM. The node has no transform. The one closest to the root is the one the viewport uses. With none in the tree, the viewport uses the preview environment when that preview is on, otherwise a bare clear. The environment map lights the scene and shows in reflections together.
 - On World: the grid.
 - Right-click a value and choose Reset to restore the value it was created with.
 
@@ -69,7 +70,7 @@ When a feature lands, move it from **Not yet** into **Already in place**. Do not
 
 ### Lighting
 
-- Default hemisphere fill and a directional light that looks at the origin and casts shadows.
+- An empty scene uses the preview sun and preview environment instead of baking default lights into the tree.
 - The floor is a lit standard material, so shadows are visible. The starter meshes cast shadows.
 - Directional shadow coverage is wide enough for the floor. Spot and point lights cast shadows.
 - Point and spot energy stays bright out to Range instead of falling off with inverse-square decay.
@@ -120,10 +121,6 @@ Build these in an order that keeps the editor usable. A half-wired Godot feature
 - A real file tree, not a list built from memory.
 - Import settings for models, textures, and audio.
 - Make Unique already exists for geometry and materials. Extend that pattern to every shared resource.
-
-### Viewport
-
-- Preview sun and environment from the viewport, the way Godot previews a DirectionalLight.
 
 ### Inspector
 
