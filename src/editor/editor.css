@@ -329,6 +329,67 @@
   border: 1px solid #151515;
   border-radius: 5px;
 }
+.tool-group.preview-sun-env {
+  position: relative;
+}
+.tool-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.preview-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  width: 280px;
+  max-height: min(70vh, 520px);
+  overflow: auto;
+  padding: 8px;
+  background: rgba(28, 28, 28, 0.98);
+  border: 1px solid #151515;
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  color: var(--font);
+  z-index: 8;
+}
+.preview-section {
+  margin-bottom: 10px;
+}
+.preview-section h3 {
+  margin: 0 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--font-dim);
+}
+.preview-menu .prop {
+  grid-template-columns: 88px 1fr;
+}
+.preview-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 4px;
+  border-top: 1px solid #222;
+}
+.preview-add {
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid #333;
+  border-radius: 4px;
+  background: #2a2a2a;
+  color: var(--font);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.preview-add:hover:not(:disabled) {
+  background: #343434;
+}
+.preview-add:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
 .tool-group select, .snap-step {
   height: 26px;
   background: transparent;

@@ -14,6 +14,7 @@ import {
 import { GEOMETRY_CATALOG, triangleCount, type GeometryType } from '../geometry'
 import type { NodeKind, ToolMode } from '../state'
 import type { AmbientSource, BackgroundMode, EnvironmentFlagField, EnvironmentNumberField, EnvironmentSettings, EnvironmentView, FogMode } from '../environment'
+import type { PreviewSunSettings } from '../previewSunEnv'
 import { EditorState, NODE_LABEL, NODE_TYPES, type EditorNode, type GridSettings, type LogLine, type ShadowTypeName } from '../state'
 import type { GroupScope } from '../groups'
 import { kindClass, kindIcon } from '../lib/format'
@@ -226,6 +227,13 @@ export const useEditorStore = defineStore('editor', () => {
   const pendingScenePath = ref('')
   const metaName = ref('')
   const metaTris = ref(0)
+  const previewSunEnabled = ref(true)
+  const previewEnvEnabled = ref(true)
+  const previewSunSettings = ref<PreviewSunSettings>({ ...engine.previewSunSettings })
+  const previewEnvSettings = ref<EnvironmentSettings>({ ...engine.previewEnvSettings })
+  const canTogglePreviewSun = ref(true)
+  const canTogglePreviewEnv = ref(true)
+  const previewMenuOpen = ref(false)
   let compileTimer = 0
   let scriptStatusTimer = 0
   let dockStatusTimer = 0
@@ -494,6 +502,12 @@ export const useEditorStore = defineStore('editor', () => {
     scenePath.value = engine.scenePath
     sceneDirty.value = engine.sceneDirty
     sceneSaved.value = engine.hasSavedScene()
+    previewSunEnabled.value = engine.previewSunEnabled
+    previewEnvEnabled.value = engine.previewEnvEnabled
+    previewSunSettings.value = { ...engine.previewSunSettings }
+    previewEnvSettings.value = { ...engine.previewEnvSettings }
+    canTogglePreviewSun.value = engine.canTogglePreviewSun()
+    canTogglePreviewEnv.value = engine.canTogglePreviewEnv()
     revision.value += 1
     syncMaterial(forceMaterial)
     writeMeta()
@@ -1214,6 +1228,123 @@ export const useEditorStore = defineStore('editor', () => {
     record('Reset Environment', () => {
       engine.resetEnvironment(id, field)
     }, { merge: false })
+  }
+
+  function setPreviewSunEnabled(enabled: boolean): void {
+    if (enabled && !engine.canTogglePreviewSun()) return
+    engine.setPreviewSunEnabled(enabled)
+    touch()
+  }
+
+  function setPreviewEnvEnabled(enabled: boolean): void {
+    if (enabled && !engine.canTogglePreviewEnv()) return
+    engine.setPreviewEnvEnabled(enabled)
+    touch()
+  }
+
+  function setPreviewSunColor(color: string): void {
+    engine.setPreviewSunColor(color)
+    touch()
+  }
+
+  function setPreviewSunEnergy(value: number): void {
+    engine.setPreviewSunEnergy(value)
+    touch()
+  }
+
+  function setPreviewSunAltitude(value: number): void {
+    engine.setPreviewSunAltitude(value)
+    touch()
+  }
+
+  function setPreviewSunAzimuth(value: number): void {
+    engine.setPreviewSunAzimuth(value)
+    touch()
+  }
+
+  function setPreviewSunShadows(enabled: boolean): void {
+    engine.setPreviewSunShadows(enabled)
+    touch()
+  }
+
+  function setPreviewEnvBackgroundMode(mode: BackgroundMode): void {
+    engine.setPreviewEnvBackgroundMode(mode)
+    touch()
+  }
+
+  function setPreviewEnvAmbientSource(source: AmbientSource): void {
+    engine.setPreviewEnvAmbientSource(source)
+    touch()
+  }
+
+  function setPreviewEnvColor(field: 'backgroundColor' | 'ambientColor', color: string): void {
+    engine.setPreviewEnvColor(field, color)
+    touch()
+  }
+
+  function setPreviewEnvNumber(field: EnvironmentNumberField, value: number): void {
+    engine.setPreviewEnvNumber(field, value)
+    touch()
+  }
+
+  function setPreviewEnvFlag(field: EnvironmentFlagField, value: boolean): void {
+    engine.setPreviewEnvFlag(field, value)
+    touch()
+  }
+
+  function setPreviewEnvShadowType(name: ShadowTypeName): void {
+    engine.setPreviewEnvShadowType(name)
+    touch()
+  }
+
+  function resetPreviewSunField(field: keyof PreviewSunSettings): void {
+    engine.resetPreviewSunField(field)
+    touch()
+  }
+
+  function resetPreviewEnvField(field: keyof EnvironmentSettings): void {
+    engine.resetPreviewEnvField(field)
+    touch()
+  }
+
+  function togglePreviewMenu(): void {
+    previewMenuOpen.value = !previewMenuOpen.value
+  }
+
+  function closePreviewMenu(): void {
+    previewMenuOpen.value = false
+  }
+
+  function addPreviewSunToScene(both = false): void {
+    if (both) {
+      record('Add Preview Sun and Environment', () => {
+        engine.addPreviewSunAndEnvironmentToScene()
+        return 'Add Preview Sun and Environment'
+      })
+    } else {
+      record('Add Preview Sun', () => {
+        engine.addPreviewSunToScene()
+        return 'Add Preview Sun'
+      })
+    }
+    previewMenuOpen.value = false
+    touch()
+  }
+
+  function addPreviewEnvironmentToScene(both = false): void {
+    if (both) {
+      record('Add Preview Sun and Environment', () => {
+        engine.addPreviewSunAndEnvironmentToScene()
+        return 'Add Preview Sun and Environment'
+      })
+    } else {
+      record('Add Preview Environment', () => {
+        engine.addPreviewEnvironmentToScene()
+        return 'Add Preview Environment'
+      })
+    }
+    previewMenuOpen.value = false
+    touch()
   }
 
   function setGridVisible(visible: boolean): void {
@@ -2225,6 +2356,7 @@ export const useEditorStore = defineStore('editor', () => {
   function closePopups(): void {
     popup.value = null
     openMenuName.value = ''
+    previewMenuOpen.value = false
   }
 
   function showPopup(rect: DOMRect, items: MenuItem[], alignStart: boolean): void {
@@ -2651,8 +2783,11 @@ export const useEditorStore = defineStore('editor', () => {
   }
 
   function onPointerDown(event: PointerEvent): void {
-    const target = event.target as HTMLElement | null
-    if (!target?.closest('.menu-pop')) closePopups()
+    const target = event.target instanceof Element
+      ? event.target
+      : (event.target as Node | null)?.parentElement ?? null
+    if (target?.closest('.menu-pop, .preview-menu, .preview-sun-env')) return
+    closePopups()
   }
 
   return {
@@ -2790,6 +2925,32 @@ export const useEditorStore = defineStore('editor', () => {
     setEnvironmentFlag,
     setEnvironmentShadowType,
     resetEnvironment,
+    previewSunEnabled,
+    previewEnvEnabled,
+    previewSunSettings,
+    previewEnvSettings,
+    canTogglePreviewSun,
+    canTogglePreviewEnv,
+    previewMenuOpen,
+    setPreviewSunEnabled,
+    setPreviewEnvEnabled,
+    setPreviewSunColor,
+    setPreviewSunEnergy,
+    setPreviewSunAltitude,
+    setPreviewSunAzimuth,
+    setPreviewSunShadows,
+    setPreviewEnvBackgroundMode,
+    setPreviewEnvAmbientSource,
+    setPreviewEnvColor,
+    setPreviewEnvNumber,
+    setPreviewEnvFlag,
+    setPreviewEnvShadowType,
+    resetPreviewSunField,
+    resetPreviewEnvField,
+    togglePreviewMenu,
+    closePreviewMenu,
+    addPreviewSunToScene,
+    addPreviewEnvironmentToScene,
     setGridVisible,
     setGridSize,
     setGridDivisions,

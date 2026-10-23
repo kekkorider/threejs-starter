@@ -112,6 +112,36 @@ The root can sit in the selection and does not hide its children.
 One drag is one history step.
 Read [[History]].
 
+## Preview sun and environment
+
+The toolbar has three controls after the shading menu.
+
+| Control | Effect |
+| --- | --- |
+| Sun button | Toggle the preview DirectionalLight when the scene has none. |
+| Environment button | Toggle the preview environment when the scene has no WorldEnvironment. |
+| Menu (three lines) | Edit preview sun and environment settings. |
+
+The preview sun draws a direction arrow like a DirectionalLight.
+It is not a scene-tree node.
+Omni, Spot, and Hemisphere lights do not turn the preview sun off.
+A DirectionalLight in the tree disables the sun toggle.
+A WorldEnvironment in the tree disables the environment toggle.
+
+Settings are project-wide in `localStorage` under `threejs-starter.preview-sun-env`.
+They are not stored in the scene file.
+
+Play hides the preview sun and the preview environment.
+Leaving `/editor` does the same.
+Stop and return to the editor restore them when their toggles are on.
+
+The settings menu has Add Sun to Scene and Add Environment to Scene.
+Each button creates a real node from the current preview settings and turns that preview off.
+Hold Shift on either button to add both.
+
+An empty scene with no saved file starts with both previews on.
+It does not bake a default DirectionalLight or WorldEnvironment into the tree.
+
 ## Shading
 
 Shaded shows the color picture.
@@ -145,5 +175,6 @@ Those objects hide outside the editor and during Play.
 
 [[Cameras]]
 [[Lights]]
+[[World environment and grid]]
 [[Keyboard shortcuts]]
 [[History]]
