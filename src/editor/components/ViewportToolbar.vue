@@ -48,8 +48,10 @@ function envTitle(): string {
 
 function onDocumentClick(event: MouseEvent): void {
   if (!store.previewMenuOpen) return
-  const target = event.target as HTMLElement | null
-  if (target?.closest('.preview-sun-env')) return
+  const target = event.target instanceof Element
+    ? event.target
+    : (event.target as Node | null)?.parentElement ?? null
+  if (target?.closest('.preview-menu, .preview-sun-env')) return
   store.closePreviewMenu()
 }
 
