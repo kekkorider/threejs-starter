@@ -46,24 +46,25 @@ function envTitle(): string {
     : 'Show preview environment when the scene has no WorldEnvironment'
 }
 
-function onDocumentPointer(event: PointerEvent): void {
+function onDocumentClick(event: MouseEvent): void {
   if (!store.previewMenuOpen) return
   const target = event.target as HTMLElement | null
   if (target?.closest('.preview-sun-env')) return
   store.closePreviewMenu()
 }
 
-function openPreviewMenu(event: PointerEvent): void {
+function openPreviewMenu(event: MouseEvent): void {
+  event.preventDefault()
   event.stopPropagation()
   store.togglePreviewMenu()
 }
 
 onMounted(() => {
-  document.addEventListener('pointerdown', onDocumentPointer, true)
+  document.addEventListener('click', onDocumentClick, true)
 })
 
 onUnmounted(() => {
-  document.removeEventListener('pointerdown', onDocumentPointer, true)
+  document.removeEventListener('click', onDocumentClick, true)
 })
 </script>
 
@@ -134,7 +135,7 @@ onUnmounted(() => {
         class="tool-btn preview-menu-btn"
         :class="{ active: store.previewMenuOpen }"
         title="Edit preview sun and environment settings"
-        @pointerdown="openPreviewMenu"
+        @click="openPreviewMenu"
       >
         <Icon name="more" />
       </button>

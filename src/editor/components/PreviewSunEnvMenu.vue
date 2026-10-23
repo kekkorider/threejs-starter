@@ -33,7 +33,7 @@ function addEnv(event: MouseEvent): void {
 </script>
 
 <template>
-  <div class="preview-menu" role="dialog" aria-label="Sun and Environment settings" @pointerdown.stop>
+  <div class="preview-menu" role="dialog" aria-label="Sun and Environment settings" @click.stop>
     <section class="preview-section">
       <h3>Preview Sun</h3>
       <PropRow label="Color" :reset="() => store.resetPreviewSunField('color')">
