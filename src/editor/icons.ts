@@ -13,6 +13,8 @@ const PATHS: Record<string, string> = {
   'light-omni': `<circle cx="8" cy="6.2" r="2.4" fill="currentColor"/><path d="M8 8.6v5.2M5.6 12.4h4.8" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>`,
   'light-spot': `<path fill="currentColor" d="M7 1.8h2v2.2H7z"/><path d="M8 4.2 3.2 13.2h9.6L8 4.2Z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>`,
   'light-hemi': `<path fill="currentColor" d="M3 9.2a5 5 0 0 1 10 0H3Z"/><path d="M2.2 9.4h11.6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>`,
+  'preview-sun': `<circle cx="8" cy="8" r="2.4" fill="currentColor"/><path d="M8 1.5v1.8M8 12.7v1.8M1.5 8h1.8M12.7 8h1.8M3.3 3.3l1.3 1.3M11.4 11.4l1.3 1.3M12.7 3.3l-1.3 1.3M4.6 11.4l-1.3 1.3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>`,
+  'preview-env': `<circle cx="8" cy="8" r="5.2" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M2.8 9.2c1.4-1.2 2.8-1.8 5.2-1.8s3.8.6 5.2 1.8" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><path d="M5.2 5.6c.7.5 1.6.8 2.8.8s2.1-.3 2.8-.8" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>`,
   add: `<path d="M8 2.5v11M2.5 8h11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>`,
   duplicate: `<rect x="4.2" y="4.2" width="8" height="8" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M3.8 11.2V3.6c0-.6.4-1 1-1h7.6" fill="none" stroke="currentColor" stroke-width="1.3"/>`,
   delete: `<path d="M3 4.2h10M6.2 4.1V2.8h3.6v1.3M4.4 4.2l.6 9h6l.6-9" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>`,
@@ -47,4 +49,5 @@ const PATHS: Record<string, string> = {
   forward: `<path d="M6 3.2 10.8 8 6 12.8" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>`,
   eye: `<path d="M1.6 8S4 4.2 8 4.2 14.4 8 14.4 8 12 11.8 8 11.8 1.6 8 1.6 8Z" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="8" cy="8" r="1.6" fill="currentColor"/>`,
   menu: `<path d="M3 4.2h10M3 8h10M3 11.8h10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>`,
+  more: `<circle cx="3.2" cy="8" r="1.15" fill="currentColor"/><circle cx="8" cy="8" r="1.15" fill="currentColor"/><circle cx="12.8" cy="8" r="1.15" fill="currentColor"/>`,
 }

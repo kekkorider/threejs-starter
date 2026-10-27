@@ -14,10 +14,19 @@ If several nodes exist, the Inspector says which one is active.
 You can still edit an inactive node.
 The viewport does not use it.
 
-Remove every WorldEnvironment and the viewport returns to the default environment.
+Remove every WorldEnvironment and the viewport uses the preview environment when that preview is on.
+Turn the preview off and the viewport uses a bare clear with no ambient fill.
 The scene block in the file stores the active environment.
 An old file with no environment node gains one on load.
 `shouldSynthesizeEnvironment` and `environmentFromLegacy` do that.
+
+## Preview environment
+
+When the scene has no WorldEnvironment, the toolbar environment button can show a project-wide preview.
+The settings menu edits background, ambient, and shadows for that preview.
+Add Environment to Scene creates a WorldEnvironment from those settings.
+Play and leaving the editor hide the preview.
+Read [[Viewport]].
 
 ## Background
 

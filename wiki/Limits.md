@@ -19,7 +19,6 @@ These resource tools are not in the editor.
 
 These viewport and inspector tools are not in the editor.
 
-- A preview sun gizmo like a Godot DirectionalLight preview.
 - Animation keys on a property.
 - A collision shape edited from the Inspector.
 

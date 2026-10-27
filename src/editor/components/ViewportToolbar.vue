@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import { onMounted, onUnmounted } from 'vue'
 import { useEditorStore, type ToolMode } from '../stores/editor'
 import Icon from './Icon.vue'
+import PreviewSunEnvMenu from './PreviewSunEnvMenu.vue'
 
 const store = useEditorStore()
 
@@ -25,6 +27,47 @@ function onView(event: Event): void {
 function onShading(event: Event): void {
   store.setShading((event.target as HTMLSelectElement).value as 'shaded' | 'debug')
 }
+
+function sunTitle(): string {
+  if (!store.canTogglePreviewSun) {
+    return 'Preview sun is off while the scene has a DirectionalLight.'
+  }
+  return store.previewSunEnabled
+    ? 'Hide preview sunlight'
+    : 'Show preview sunlight when the scene has no DirectionalLight'
+}
+
+function envTitle(): string {
+  if (!store.canTogglePreviewEnv) {
+    return 'Preview environment is off while the scene has a WorldEnvironment.'
+  }
+  return store.previewEnvEnabled
+    ? 'Hide preview environment'
+    : 'Show preview environment when the scene has no WorldEnvironment'
+}
+
+function onDocumentClick(event: MouseEvent): void {
+  if (!store.previewMenuOpen) return
+  const target = event.target instanceof Element
+    ? event.target
+    : (event.target as Node | null)?.parentElement ?? null
+  if (target?.closest('.preview-menu, .preview-sun-env')) return
+  store.closePreviewMenu()
+}
+
+function openPreviewMenu(event: MouseEvent): void {
+  event.preventDefault()
+  event.stopPropagation()
+  store.togglePreviewMenu()
+}
+
+onMounted(() => {
+  document.addEventListener('click', onDocumentClick, true)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', onDocumentClick, true)
+})
 </script>
 
 <template>
@@ -67,6 +110,38 @@ function onShading(event: Event): void {
         <option value="shaded">Shaded</option>
         <option value="debug">Debug Split</option>
       </select>
+    </div>
+    <div class="tool-group preview-sun-env">
+      <button
+        type="button"
+        class="tool-btn"
+        :class="{ active: store.previewSunEnabled && store.canTogglePreviewSun }"
+        :disabled="!store.canTogglePreviewSun"
+        :title="sunTitle()"
+        @click="store.setPreviewSunEnabled(!(store.previewSunEnabled && store.canTogglePreviewSun))"
+      >
+        <Icon name="preview-sun" />
+      </button>
+      <button
+        type="button"
+        class="tool-btn"
+        :class="{ active: store.previewEnvEnabled && store.canTogglePreviewEnv }"
+        :disabled="!store.canTogglePreviewEnv"
+        :title="envTitle()"
+        @click="store.setPreviewEnvEnabled(!(store.previewEnvEnabled && store.canTogglePreviewEnv))"
+      >
+        <Icon name="preview-env" />
+      </button>
+      <button
+        type="button"
+        class="tool-btn preview-menu-btn"
+        :class="{ active: store.previewMenuOpen }"
+        title="Edit preview sun and environment settings"
+        @click="openPreviewMenu"
+      >
+        <Icon name="more" />
+      </button>
+      <PreviewSunEnvMenu v-if="store.previewMenuOpen" />
     </div>
   </div>
 </template>

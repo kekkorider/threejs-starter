@@ -78,6 +78,16 @@ import {
 import { attachEnvironmentIcon, disposeEnvironmentIcon } from './environmentIcons'
 import { attachLightArrow, attachLightIcon, attachSpotCone, disposeLightArrow, disposeLightIcon, disposeSpotCone, updateSpotCone, type LightIconKind } from './lightIcons'
 import {
+  applyPreviewSunToLight,
+  bareEnvironmentSettings,
+  copyPreviewSunSettings,
+  defaultPreviewEnvironmentSettings,
+  defaultPreviewSunSettings,
+  readPreviewSunEnvState,
+  writePreviewSunEnvState,
+  type PreviewSunSettings,
+} from './previewSunEnv'
+import {
   hasSceneFile,
   normalizeScenePath,
   preferredOpenPath,
@@ -332,6 +342,12 @@ export class EditorState {
   /** Fill light driven by the active WorldEnvironment. It is not a scene-tree node. */
   private ambientFill: THREE.AmbientLight | null = null
   private environmentWarning = ''
+  /** Editor-only directional light when the scene has no DirectionalLight. */
+  private previewSun: THREE.DirectionalLight | null = null
+  previewSunEnabled = true
+  previewEnvEnabled = true
+  previewSunSettings: PreviewSunSettings = defaultPreviewSunSettings()
+  previewEnvSettings: EnvironmentSettings = defaultPreviewEnvironmentSettings()
   /** Camera the viewport is rendering with. The editor camera, unless previewing or playing a scene camera. */
   private camera: THREE.PerspectiveCamera | THREE.OrthographicCamera | null = null
   /** Orbit camera. Scene cameras never replace this object. */
@@ -419,8 +435,8 @@ export class EditorState {
       world.attach(child)
     }
 
-    this.addDefaultLights(world)
     this.rootId = this.registerTree(world, null, false, true)
+    this.loadPreviewSunEnv()
 
     const floor = world.getObjectByName('Floor')
     if (floor) {
@@ -477,9 +493,9 @@ export class EditorState {
         this.sceneDirty = true
       }
     } else {
-      this.createWorldEnvironment(this.rootId, undefined, undefined, { select: false, quiet: true, front: true })
       this.sceneDirty = true
     }
+    this.syncEnvironment(true)
     return true
   }
 
@@ -632,6 +648,7 @@ export class EditorState {
     this.updateCameras()
     this.applyGridVisibility()
     this.updateLightIcons()
+    this.syncEnvironment()
     if (!this.controls) return
     if (!visible) {
       this.controls.detach()
@@ -841,6 +858,7 @@ export class EditorState {
     this.updateCameras()
     this.applyGridVisibility()
     this.updateLightIcons()
+    this.syncEnvironment()
     if (playing) this.controls?.detach()
     else this.syncGizmo()
     this.updateSelectionBox()
@@ -1065,6 +1083,7 @@ export class EditorState {
     parent.object.add(light)
     const node = this.addNode(light, parent.id, options.kind, false)
     this.aimLight(light)
+    this.syncEnvironment()
     this.log(`Added ${light.name}`)
     this.select(node.id)
     return node
@@ -2835,21 +2854,264 @@ export class EditorState {
     }
   }
 
-  /** Push the active WorldEnvironment onto the viewport, or the default when none is in the tree. */
+  /**
+   * Push the active WorldEnvironment onto the viewport.
+   * With none in the tree, use the preview environment when it is on, else a bare clear.
+   * Also syncs the preview sun.
+   */
   private syncEnvironment(force = false): void {
     if (this.restoring && !force) return
     const scene = this.scene
     const renderer = this.starter?.ctx.renderer
     if (!scene || !renderer) return
     const active = this.activeWorldEnvironment()
-    const settings = active ? (readEnvironment(active.object) ?? defaultEnvironmentSettings()) : defaultEnvironmentSettings()
+    let settings: EnvironmentSettings
+    if (active) {
+      settings = readEnvironment(active.object) ?? defaultEnvironmentSettings()
+    } else if (this.previewEnvEffective()) {
+      settings = this.previewEnvSettings
+    } else {
+      settings = bareEnvironmentSettings()
+    }
     applyEnvironmentSettings(scene, renderer, this.ensureAmbient(scene), settings)
+    this.syncPreviewSun()
     const count = this.environmentNodes().length
     const warning = count > 1 && active
       ? `${count} WorldEnvironment nodes. The viewport uses ${active.name}, the one closest to the root.`
       : ''
     if (warning && warning !== this.environmentWarning) this.log(warning, 'warn')
     this.environmentWarning = warning
+  }
+
+  sceneHasDirectionalLight(): boolean {
+    for (const node of this.nodes.values()) {
+      if (node.kind === 'DirectionalLight3D') return true
+    }
+    return false
+  }
+
+  sceneHasWorldEnvironment(): boolean {
+    return this.environmentNodes().length > 0
+  }
+
+  /** True when the toolbar may turn the preview sun on. */
+  canTogglePreviewSun(): boolean {
+    return !this.sceneHasDirectionalLight()
+  }
+
+  /** True when the toolbar may turn the preview environment on. */
+  canTogglePreviewEnv(): boolean {
+    return !this.sceneHasWorldEnvironment()
+  }
+
+  previewEnvEffective(): boolean {
+    return this.chromeVisible && !this.playing && this.previewEnvEnabled && !this.sceneHasWorldEnvironment()
+  }
+
+  previewSunEffective(): boolean {
+    return this.chromeVisible && !this.playing && this.previewSunEnabled && !this.sceneHasDirectionalLight()
+  }
+
+  setPreviewSunEnabled(enabled: boolean): void {
+    if (enabled && this.sceneHasDirectionalLight()) return
+    this.previewSunEnabled = enabled
+    this.persistPreviewSunEnv()
+    this.syncEnvironment()
+  }
+
+  setPreviewEnvEnabled(enabled: boolean): void {
+    if (enabled && this.sceneHasWorldEnvironment()) return
+    this.previewEnvEnabled = enabled
+    this.persistPreviewSunEnv()
+    this.syncEnvironment()
+  }
+
+  setPreviewSunColor(color: string): void {
+    if (!/^#[0-9a-fA-F]{6}$/.test(color)) return
+    this.previewSunSettings.color = color
+    this.persistPreviewSunEnv()
+    this.syncPreviewSun()
+  }
+
+  setPreviewSunEnergy(value: number): void {
+    if (!Number.isFinite(value)) return
+    this.previewSunSettings.energy = Math.max(0, value)
+    this.persistPreviewSunEnv()
+    this.syncPreviewSun()
+  }
+
+  setPreviewSunAltitude(value: number): void {
+    if (!Number.isFinite(value)) return
+    this.previewSunSettings.altitude = THREE.MathUtils.clamp(value, -90, 90)
+    this.persistPreviewSunEnv()
+    this.syncPreviewSun()
+  }
+
+  setPreviewSunAzimuth(value: number): void {
+    if (!Number.isFinite(value)) return
+    this.previewSunSettings.azimuth = value
+    this.persistPreviewSunEnv()
+    this.syncPreviewSun()
+  }
+
+  setPreviewSunShadows(enabled: boolean): void {
+    this.previewSunSettings.shadows = enabled
+    this.persistPreviewSunEnv()
+    this.syncPreviewSun()
+  }
+
+  setPreviewEnvBackgroundMode(mode: BackgroundMode): void {
+    this.previewEnvSettings.backgroundMode = mode
+    this.persistPreviewSunEnv()
+    this.syncEnvironment()
+  }
+
+  setPreviewEnvAmbientSource(source: AmbientSource): void {
+    this.previewEnvSettings.ambientSource = source
+    this.persistPreviewSunEnv()
+    this.syncEnvironment()
+  }
+
+  setPreviewEnvColor(field: 'backgroundColor' | 'ambientColor', color: string): void {
+    writeEnvironmentColor(this.previewEnvSettings, field, color)
+    this.persistPreviewSunEnv()
+    this.syncEnvironment()
+  }
+
+  setPreviewEnvNumber(field: EnvironmentNumberField, value: number): void {
+    writeEnvironmentNumber(this.previewEnvSettings, field, value)
+    this.persistPreviewSunEnv()
+    this.syncEnvironment()
+  }
+
+  setPreviewEnvFlag(field: EnvironmentFlagField, value: boolean): void {
+    this.previewEnvSettings[field] = value
+    this.persistPreviewSunEnv()
+    this.syncEnvironment()
+  }
+
+  setPreviewEnvShadowType(name: ShadowTypeName): void {
+    this.previewEnvSettings.shadowType = name
+    this.persistPreviewSunEnv()
+    this.syncEnvironment()
+  }
+
+  resetPreviewSunField(field: keyof PreviewSunSettings): void {
+    const defaults = defaultPreviewSunSettings()
+    ;(this.previewSunSettings as PreviewSunSettings)[field] = defaults[field] as never
+    this.persistPreviewSunEnv()
+    this.syncPreviewSun()
+  }
+
+  resetPreviewEnvField(field: keyof EnvironmentSettings): void {
+    resetEnvironmentField(this.previewEnvSettings, defaultPreviewEnvironmentSettings(), field)
+    this.persistPreviewSunEnv()
+    this.syncEnvironment()
+  }
+
+  /**
+   * Create a DirectionalLight from the preview sun settings and turn the preview off.
+   * Returns the new node id, or null when a directional light already exists.
+   */
+  addPreviewSunToScene(): string | null {
+    if (this.sceneHasDirectionalLight()) return null
+    const settings = this.previewSunSettings
+    const node = this.createLight({
+      kind: 'DirectionalLight3D',
+      name: 'DirectionalLight',
+      parentId: this.rootId,
+      color: settings.color,
+      intensity: settings.energy,
+    })
+    const light = node.object as THREE.DirectionalLight
+    applyPreviewSunToLight(light, settings)
+    light.userData.lookAt = { enabled: true, x: 0, y: 0, z: 0 }
+    this.aimLight(light)
+    this.previewSunEnabled = false
+    this.persistPreviewSunEnv()
+    this.syncEnvironment()
+    return node.id
+  }
+
+  /**
+   * Create a WorldEnvironment from the preview environment settings and turn the preview off.
+   * Returns the new node id, or null when a WorldEnvironment already exists.
+   */
+  addPreviewEnvironmentToScene(): string | null {
+    if (this.sceneHasWorldEnvironment()) return null
+    const node = this.createWorldEnvironment(
+      this.rootId,
+      'WorldEnvironment',
+      copyEnvironmentSettings(this.previewEnvSettings),
+      { select: true, quiet: false, front: true },
+    )
+    this.previewEnvEnabled = false
+    this.persistPreviewSunEnv()
+    this.syncEnvironment()
+    return node.id
+  }
+
+  /** Add both preview sun and environment as scene nodes when Shift is held. */
+  addPreviewSunAndEnvironmentToScene(): { sunId: string | null, envId: string | null } {
+    const sunId = this.addPreviewSunToScene()
+    const envId = this.addPreviewEnvironmentToScene()
+    return { sunId, envId }
+  }
+
+  private loadPreviewSunEnv(): void {
+    const stored = readPreviewSunEnvState()
+    this.previewSunEnabled = stored.sunEnabled
+    this.previewEnvEnabled = stored.envEnabled
+    this.previewSunSettings = copyPreviewSunSettings(stored.sun)
+    this.previewEnvSettings = copyEnvironmentSettings(stored.environment)
+  }
+
+  private persistPreviewSunEnv(): void {
+    writePreviewSunEnvState({
+      sunEnabled: this.previewSunEnabled,
+      envEnabled: this.previewEnvEnabled,
+      sun: this.previewSunSettings,
+      environment: this.previewEnvSettings,
+    })
+  }
+
+  private syncPreviewSun(): void {
+    const scene = this.scene
+    if (!scene) return
+    const show = this.previewSunEffective()
+    if (!show) {
+      if (this.previewSun) {
+        this.previewSun.visible = false
+        this.previewSun.intensity = 0
+      }
+      return
+    }
+    const light = this.ensurePreviewSun(scene)
+    applyPreviewSunToLight(light, this.previewSunSettings)
+    light.visible = true
+    const arrow = light.getObjectByName('LightArrow')
+    if (arrow) arrow.visible = this.chromeVisible && !this.playing
+  }
+
+  private ensurePreviewSun(scene: THREE.Scene): THREE.DirectionalLight {
+    if (this.previewSun) return this.previewSun
+    const light = new THREE.DirectionalLight('#fff5e0', 1.2)
+    light.name = 'PreviewSun'
+    light.userData.editorHidden = true
+    light.userData.previewSun = true
+    this.configureShadow(light)
+    attachLightArrow(light)
+    const arrow = light.getObjectByName('LightArrow')
+    if (arrow) {
+      arrow.traverse((child) => {
+        child.raycast = () => {}
+      })
+    }
+    scene.add(light)
+    scene.add(light.target)
+    light.target.userData.editorHidden = true
+    this.previewSun = light
+    return light
   }
 
   private ensureAmbient(scene: THREE.Scene): THREE.AmbientLight {
@@ -2882,16 +3144,6 @@ export class EditorState {
       const message = error instanceof Error ? error.message : String(error)
       this.log(`Environment lighting skipped: ${message}`, 'warn')
     }
-  }
-
-  private addDefaultLights(world: THREE.Group): void {
-    const hemi = new THREE.HemisphereLight('#e7eefc', '#3c342c', 0.45)
-    hemi.name = 'HemisphereLight'
-    const sun = new THREE.DirectionalLight('#fff4e4', 2.4)
-    sun.name = 'DirectionalLight'
-    sun.position.set(6, 10, 4)
-    this.prepareLight(sun, new THREE.Vector3(0, 0, 0))
-    world.add(hemi, sun)
   }
 
   /**

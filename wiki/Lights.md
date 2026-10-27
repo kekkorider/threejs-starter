@@ -86,6 +86,14 @@ Click the badge to select the light.
 Badges hide during Play.
 Badges hide on the `/` route.
 
+## Preview sun
+
+When the scene has no DirectionalLight, the viewport can show an editor-only preview sun.
+The toolbar sun button toggles it.
+The settings menu sets color, energy, altitude, azimuth, and shadows.
+Add Sun to Scene creates a DirectionalLight from those settings.
+Read [[Viewport]].
+
 ## Shadows
 
 Cast Shadow and Receive Shadow are on the Visibility section.
