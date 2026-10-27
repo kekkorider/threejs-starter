@@ -220,7 +220,7 @@ function onBackdrop(event: PointerEvent): void {
             </div>
             <div class="hint">The inspector edits the rest of the lens after the camera is created.</div>
           </template>
-          <template v-else-if="draft.kind !== 'Node3D'">
+          <template v-else-if="draft.kind !== 'Node3D' && draft.kind !== 'Body'">
             <div class="prop">
               <div class="prop-label">Color</div>
               <input v-model="draft.color" type="color" />

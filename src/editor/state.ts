@@ -372,6 +372,8 @@ export class EditorState {
   /** Scene camera the viewport looks through while editing. Not saved. */
   private previewCameraId: string | null = null
   private cameraHelpers = new Map<string, THREE.CameraHelper>()
+  /** Local transform of each body at the moment Play starts. Stop writes it back. */
+  private bodyEditorPoses = new Map<string, { position: THREE.Vector3, quaternion: THREE.Quaternion, scale: THREE.Vector3 }>()
   private grid: THREE.GridHelper | null = null
   private selectionHelpers: THREE.Box3Helper[] = []
   private selectionBoxes: THREE.Box3[] = []
@@ -4375,6 +4377,13 @@ export class EditorState {
   private attachSceneBodies(): void {
     for (const node of this.nodes.values()) {
       if (node.kind !== 'Body') continue
+      if (!this.bodyEditorPoses.has(node.id)) {
+        this.bodyEditorPoses.set(node.id, {
+          position: node.object.position.clone(),
+          quaternion: node.object.quaternion.clone(),
+          scale: node.object.scale.clone(),
+        })
+      }
       if (getComponents(node.object, SceneBody).length > 0) continue
       const settings = readBody(node.object)
       const tracksMesh = settings.shape === 'triangle' || settings.shape === 'convexHull'
@@ -4387,6 +4396,15 @@ export class EditorState {
       if (node.kind !== 'Body') continue
       for (const behaviour of getComponents(node.object, SceneBody)) destroy(behaviour)
     }
+    for (const [id, pose] of this.bodyEditorPoses) {
+      const node = this.nodes.get(id)
+      if (!node) continue
+      node.object.position.copy(pose.position)
+      node.object.quaternion.copy(pose.quaternion)
+      node.object.scale.copy(pose.scale)
+      node.object.updateMatrixWorld(true)
+    }
+    this.bodyEditorPoses.clear()
   }
 
   private bindBodyMeshes(records: { id: string, kind: NodeKind }[], runtime: Map<string, string>): void {

@@ -82,7 +82,7 @@ When a feature lands, move it from **Not yet** into **Already in place**. Do not
 - Turning physics off lists every object that has a physics body and asks before it reloads. Opening the editor with physics already off shows the same list. The objects stay in the scene and do not simulate.
 - Create Node → Body adds a physics body. It is the root of that element: it can sit on World or a Node, and a mesh can be dragged under it. It cannot be dropped onto a mesh or onto another body.
 - The inspector sets motion type (Static, Kinematic, Dynamic), the collision shape (Box, Sphere, Triangle Mesh, Convex Hull), and the rigid-body fields crashcat stores on a body. Static uses the Not Moving layer. The others use Moving. Triangle mesh and convex hull read a child mesh. The shape is drawn in the editor and hides while playing.
-- Play steps the world. Stop removes the simulated bodies and leaves the nodes. Pause still sets the timescale to 0.
+- Play steps the world. Stop removes the simulated bodies, puts each body back to the transform it had in the editor, and leaves the nodes. Pause still sets the timescale to 0.
 
 ### Components
 
