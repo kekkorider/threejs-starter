@@ -3,6 +3,7 @@ import { onBeforeUnmount, onMounted, reactive } from 'vue'
 import AssetLibrary from '../components/AssetLibrary.vue'
 import BottomPanel from '../components/BottomPanel.vue'
 import ComponentWarning from '../components/ComponentWarning.vue'
+import PhysicsBodiesWarning from '../components/PhysicsBodiesWarning.vue'
 import CreateComponentDialog from '../components/CreateComponentDialog.vue'
 import CreateNodeDialog from '../components/CreateNodeDialog.vue'
 import FileDock from '../components/FileDock.vue'
@@ -153,6 +154,7 @@ onBeforeUnmount(() => {
     <CreateNodeDialog v-if="store.createOpen" :key="store.createNonce" />
     <CreateComponentDialog v-if="store.componentOpen" :key="store.componentNonce" />
     <ComponentWarning />
+    <PhysicsBodiesWarning />
     <HelpDialog v-if="store.helpTopic" />
   </div>
 </template>

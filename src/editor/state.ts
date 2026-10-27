@@ -111,6 +111,20 @@ import {
   type MaterialFlags,
   type MaterialSide,
 } from './tsl'
+import { disposeBodyShapes, setBodyShapeVisible, syncBodyShape } from './bodyShape'
+import {
+  bodyFromUnknown,
+  bodyLayerLabel,
+  copyBodySettings,
+  defaultBodySettings,
+  readBody,
+  resetBodyField,
+  sanitizeBody,
+  type BodySettings,
+} from './physicsBody'
+import type { PhysicsWorldSettings } from './physicsSettings'
+import { Body } from '../webgl/behaviors/physics/Body'
+import { SceneBody } from '../webgl/behaviors/physics/SceneBody'
 
 export type NodeKind =
   | 'Node3D'
@@ -121,6 +135,7 @@ export type NodeKind =
   | 'OmniLight3D'
   | 'SpotLight3D'
   | 'HemisphereLight3D'
+  | 'Body'
 
 export type ToolMode = 'select' | 'list' | 'translate' | 'rotate' | 'scale'
 export type ShadingMode = 'shaded' | 'debug'
@@ -142,6 +157,7 @@ export interface NodeDefaults {
   light: LightDefaults | null
   camera: CameraSettings | null
   environment: EnvironmentSettings | null
+  body: BodySettings | null
 }
 
 export interface LightDefaults {
@@ -266,6 +282,7 @@ export const NODE_LABEL: Record<NodeKind, string> = {
   OmniLight3D: 'OmniLight',
   SpotLight3D: 'SpotLight',
   HemisphereLight3D: 'HemisphereLight',
+  Body: 'Body',
 }
 
 export type ShadowTypeName = 'basic' | 'pcf' | 'vsm'
@@ -648,6 +665,7 @@ export class EditorState {
     this.updateCameras()
     this.applyGridVisibility()
     this.updateLightIcons()
+    this.updateBodyShapes()
     this.syncEnvironment()
     if (!this.controls) return
     if (!visible) {
@@ -859,6 +877,7 @@ export class EditorState {
     this.applyGridVisibility()
     this.updateLightIcons()
     this.syncEnvironment()
+    this.syncPhysics()
     if (playing) this.controls?.detach()
     else this.syncGizmo()
     this.updateSelectionBox()
@@ -937,6 +956,83 @@ export class EditorState {
     this.log(`Added ${node.name}`)
     this.select(node.id)
     return node
+  }
+
+  /** A Body is the root of its element. A mesh is dragged in as a child. */
+  createBody(parentId?: string | null, name?: string, settings?: BodySettings): EditorNode {
+    const parent = this.bodyHost(parentId)
+    const object = new THREE.Object3D()
+    object.name = this.uniqueName(name?.trim() || 'Body')
+    object.userData.body = copyBodySettings(settings ?? defaultBodySettings())
+    parent.object.add(object)
+    const node = this.addNode(object, parent.id, 'Body', false)
+    this.rebuildBodyShape(node)
+    this.log(`Added ${node.name}`)
+    this.select(node.id)
+    return node
+  }
+
+  updateBody(id: string, mutate: (settings: BodySettings) => void): void {
+    const node = this.nodes.get(id)
+    if (!node || node.kind !== 'Body') return
+    const settings = readBody(node.object)
+    mutate(settings)
+    sanitizeBody(settings)
+    node.object.userData.body = settings
+    this.rebuildBodyShape(node)
+    this.touchScene()
+  }
+
+  resetBody(id: string, key: keyof BodySettings): void {
+    const defaults = this.nodes.get(id)?.defaults.body
+    if (!defaults) return
+    this.updateBody(id, (settings) => {
+      resetBodyField(settings, defaults, key)
+    })
+  }
+
+  bodyInspector(node: EditorNode): { settings: BodySettings, layer: string, meshes: { id: string, name: string }[] } | null {
+    if (node.kind !== 'Body') return null
+    return {
+      settings: readBody(node.object),
+      layer: bodyLayerLabel(readBody(node.object).motion),
+      meshes: this.meshChoices(node),
+    }
+  }
+
+  /** Objects that own a physics body: Body nodes, plus any object with a Body behaviour. */
+  physicsUsers(): { id: string, name: string }[] {
+    const uses: { id: string, name: string }[] = []
+    const seen = new Set<THREE.Object3D>()
+    for (const node of this.nodes.values()) {
+      if (node.kind !== 'Body') continue
+      uses.push({ id: node.id, name: node.name })
+      seen.add(node.object)
+    }
+    const scene = this.starter?.ctx.scene
+    if (!scene) return uses
+    scene.traverse((object) => {
+      if (seen.has(object)) return
+      let behaviours: Body[] = []
+      try {
+        behaviours = getComponents(object, Body)
+      } catch {
+        return
+      }
+      if (behaviours.length === 0) return
+      seen.add(object)
+      const nodeId = object.userData.editorId as string | undefined
+      const node = nodeId ? this.nodes.get(nodeId) : undefined
+      uses.push({
+        id: node?.id ?? object.uuid,
+        name: node?.name || object.name || 'Object',
+      })
+    })
+    return uses
+  }
+
+  applyPhysicsWorld(world: PhysicsWorldSettings): void {
+    this.starter?.ctx.modules.physics?.applyWorld(world)
   }
 
   /**
@@ -1208,6 +1304,7 @@ export class EditorState {
     this.releaseCameras(node.object)
     this.releaseEnvironment(node.object)
     this.releaseLights(node.object)
+    this.releaseBodyShapes(node.object)
     for (const childId of ids) this.forgetNodeComponents(childId)
     for (const childId of ids) this.signalBus.removeNode(childId)
     destroy(node.object)
@@ -1400,11 +1497,17 @@ export class EditorState {
     const parent = this.nodes.get(parentId)
     if (!node || !parent || node.isRoot || node.id === parent.id) return
     if (this.isAncestor(node.id, parent.id)) return
+    if (node.kind === 'Body' && !parent.isRoot && parent.kind !== 'Node3D') {
+      this.log(`${node.name} stays the root. Drop it on World or a Node.`, 'warn')
+      return
+    }
     const previous = node.parentId ? this.nodes.get(node.parentId) : undefined
     if (previous) previous.childIds = previous.childIds.filter((childId) => childId !== id)
     parent.childIds.push(id)
     node.parentId = parent.id
     parent.object.attach(node.object)
+    if (parent.kind === 'Body') this.rebuildBodyShape(parent)
+    if (previous?.kind === 'Body') this.rebuildBodyShape(previous)
     this.syncEnvironment()
     this.log(`Moved ${node.name} under ${parent.name}`)
     this.touchScene()
@@ -1436,6 +1539,7 @@ export class EditorState {
     const node = this.nodes.get(id)
     if (!node || node.object.visible === visible) return
     node.object.visible = visible
+    this.updateBodyShapes()
     this.emitNode(node.id, 'visibility_changed')
     this.touchScene()
   }
@@ -2350,6 +2454,7 @@ export class EditorState {
         instance: node.instancePath,
         groups: [...node.groups],
         signals: cloneSignals(node.signals),
+        body: node.kind === 'Body' ? readBody(node.object) : null,
       })
       if (node.instancePath) return
       for (const childId of node.childIds) {
@@ -2361,6 +2466,10 @@ export class EditorState {
     const root = this.nodes.get(this.rootId)
     if (!root) throw new Error('Scene root is missing.')
     walk(root, null)
+    for (const record of nodes) {
+      if (!record.body?.meshId) continue
+      record.body.meshId = runtimeToFile.get(record.body.meshId) ?? ''
+    }
     return {
       version: 1,
       path: this.scenePath,
@@ -2442,6 +2551,7 @@ export class EditorState {
         const created = this.spawnRecord(record, parentRuntime, geoMap, matMap, new Set(), preserveNames)
         runtime.set(record.id, created.id)
       }
+      this.bindBodyMeshes(file.nodes, runtime)
       if (shouldSynthesizeEnvironment(file.scene.environment, this.environmentNodes().length > 0)) {
         this.createWorldEnvironment(this.rootId, 'WorldEnvironment', environmentFromLegacy(file.scene), {
           select: false,
@@ -2519,6 +2629,9 @@ export class EditorState {
     } else if (record.kind === 'WorldEnvironment') {
       object = new THREE.Group()
       object.userData.environment = copyEnvironmentSettings(record.environment ?? defaultEnvironmentSettings())
+    } else if (record.kind === 'Body') {
+      object = new THREE.Object3D()
+      object.userData.body = bodyFromUnknown(record.body)
     } else {
       object = new THREE.Group()
     }
@@ -2627,6 +2740,7 @@ export class EditorState {
       created.instanceOwnerId = holderId
       runtime.set(record.id, created.id)
     }
+    this.bindBodyMeshes(file.nodes, runtime)
     this.bindConnections(file.connections, runtime)
   }
 
@@ -2695,6 +2809,7 @@ export class EditorState {
     }
     this.syncViewCamera()
     this.updateCameras()
+    this.updateBodyShapes()
     if (this.playing || !this.chromeVisible) return
     this.updateSelectionBox()
     this.updateLightIcons()
@@ -3457,6 +3572,9 @@ export class EditorState {
     if (node.kind === 'WorldEnvironment') {
       object.userData.environment = copyEnvironmentSettings(readEnvironment(node.object) ?? defaultEnvironmentSettings())
     }
+    if (node.kind === 'Body') {
+      object.userData.body = copyBodySettings(readBody(node.object))
+    }
     const parent = this.nodes.get(parentId)
     parent?.object.add(object)
     const copy = this.addNode(object, parentId, node.kind, node.imported, {
@@ -3486,6 +3604,13 @@ export class EditorState {
     for (const componentId of node.componentIds) {
       const instance = this.componentInstances.get(componentId)
       if (instance) this.attachComponent(instance.resourceId, copy.id)
+    }
+    if (copy.kind === 'Body') {
+      const settings = readBody(copy.object)
+      const mapped = settings.meshId ? copies.get(settings.meshId) : undefined
+      if (settings.meshId) settings.meshId = mapped ?? (this.nodes.has(settings.meshId) ? settings.meshId : '')
+      copy.object.userData.body = settings
+      this.rebuildBodyShape(copy)
     }
     this.enterTree(copy)
     return copy
@@ -3616,6 +3741,7 @@ export class EditorState {
       light: lightDefaultsFrom(object),
       camera: copyStoredCamera(object),
       environment: copyStoredEnvironment(object),
+      body: object.userData.body ? copyBodySettings(readBody(object)) : null,
     }
   }
 
@@ -4046,6 +4172,8 @@ export class EditorState {
     for (const node of this.nodes.values()) {
       if (node.isRoot) continue
       if (node.object instanceof THREE.Mesh && node.object.visible) targets.push(node.object)
+      const shape = node.kind === 'Body' ? node.object.getObjectByName('BodyShape') : null
+      if (shape?.visible) targets.push(shape)
       const icon = node.object.getObjectByName('LightIcon')
         ?? node.object.getObjectByName('CameraIcon')
         ?? node.object.getObjectByName('EnvironmentIcon')
@@ -4091,12 +4219,16 @@ export class EditorState {
   ): boolean {
     if (!this.isDrawn(node.object)) return false
     node.object.updateWorldMatrix(true, false)
-    const mesh = node.object instanceof THREE.Mesh ? node.object : null
+    const shape = node.kind === 'Body' ? node.object.getObjectByName('BodyShape') : null
+    const mesh = shape instanceof THREE.Mesh
+      ? shape
+      : node.object instanceof THREE.Mesh ? node.object : null
     const geometry = mesh?.geometry
     if (geometry) {
       if (!geometry.boundingBox) geometry.computeBoundingBox()
       if (geometry.boundingBox && !geometry.boundingBox.isEmpty()) {
-        this.marqueeBounds.copy(geometry.boundingBox).applyMatrix4(node.object.matrixWorld)
+        mesh.updateWorldMatrix(true, false)
+        this.marqueeBounds.copy(geometry.boundingBox).applyMatrix4(mesh.matrixWorld)
         if (!this.marqueeBounds.isEmpty()) {
           return this.boundsHitMarquee(this.marqueeBounds, left, top, right, bottom, width, height)
         }
@@ -4173,6 +4305,101 @@ export class EditorState {
     let index = 2
     while (names.has(`${base}${index}`)) index += 1
     return `${base}${index}`
+  }
+
+  private bodyHost(parentId?: string | null): EditorNode {
+    let parent = this.parentOrSelected(parentId)
+    while (!parent.isRoot && parent.kind !== 'Node3D') {
+      const up = parent.parentId ? this.nodes.get(parent.parentId) : undefined
+      if (!up) break
+      parent = up
+    }
+    return parent
+  }
+
+  private meshChoices(node: EditorNode): { id: string, name: string }[] {
+    const choices: { id: string, name: string }[] = []
+    const walk = (id: string): void => {
+      const child = this.nodes.get(id)
+      if (!child) return
+      if (child.kind === 'MeshInstance3D') choices.push({ id: child.id, name: child.name })
+      for (const childId of child.childIds) walk(childId)
+    }
+    for (const childId of node.childIds) walk(childId)
+    return choices
+  }
+
+  private meshForBody(node: EditorNode): THREE.Mesh | null {
+    const settings = readBody(node.object)
+    if (settings.meshId) {
+      const chosen = this.nodes.get(settings.meshId)
+      if (chosen?.object instanceof THREE.Mesh) return chosen.object
+    }
+    const first = this.meshChoices(node)[0]
+    const nodeMesh = first ? this.nodes.get(first.id) : undefined
+    return nodeMesh?.object instanceof THREE.Mesh ? nodeMesh.object : null
+  }
+
+  private rebuildBodyShape(node: EditorNode): void {
+    if (node.kind !== 'Body') return
+    const settings = readBody(node.object)
+    const tracksMesh = settings.shape === 'triangle' || settings.shape === 'convexHull'
+    syncBodyShape(
+      node.object,
+      settings,
+      tracksMesh ? this.meshForBody(node) : null,
+      this.chromeVisible && !this.playing && node.object.visible,
+    )
+  }
+
+  private updateBodyShapes(): void {
+    const show = this.chromeVisible && !this.playing
+    for (const node of this.nodes.values()) {
+      if (node.kind !== 'Body') continue
+      setBodyShapeVisible(node.object, show && node.object.visible)
+    }
+  }
+
+  private releaseBodyShapes(object: THREE.Object3D): void {
+    disposeBodyShapes(object)
+  }
+
+  private syncPhysics(): void {
+    const physics = this.starter?.ctx.modules.physics
+    if (physics) physics.simulating = this.playing
+    if (this.playing && physics) this.attachSceneBodies()
+    else this.detachSceneBodies()
+    this.updateBodyShapes()
+  }
+
+  private attachSceneBodies(): void {
+    for (const node of this.nodes.values()) {
+      if (node.kind !== 'Body') continue
+      if (getComponents(node.object, SceneBody).length > 0) continue
+      const settings = readBody(node.object)
+      const tracksMesh = settings.shape === 'triangle' || settings.shape === 'convexHull'
+      addComponent(node.object, SceneBody, settings, tracksMesh ? this.meshForBody(node) : null)
+    }
+  }
+
+  private detachSceneBodies(): void {
+    for (const node of this.nodes.values()) {
+      if (node.kind !== 'Body') continue
+      for (const behaviour of getComponents(node.object, SceneBody)) destroy(behaviour)
+    }
+  }
+
+  private bindBodyMeshes(records: { id: string, kind: NodeKind }[], runtime: Map<string, string>): void {
+    for (const record of records) {
+      if (record.kind !== 'Body') continue
+      const id = runtime.get(record.id)
+      const node = id ? this.nodes.get(id) : undefined
+      if (!node) continue
+      const settings = readBody(node.object)
+      settings.meshId = settings.meshId ? runtime.get(settings.meshId) ?? '' : ''
+      node.object.userData.body = settings
+      this.rebuildBodyShape(node)
+    }
   }
 }
 
@@ -4333,5 +4560,12 @@ export const NODE_TYPES: { kind: NodeKind, label: string, group: string, descrip
     group: 'Light',
     description: 'Sky and ground colors used as soft ambient fill. It has no position.',
     inherits: 'HemisphereLight < Light < Node',
+  },
+  {
+    kind: 'Body',
+    label: 'Body',
+    group: 'Physics',
+    description: 'A physics body. Drag a mesh under it. The inspector sets the motion type and the collision shape. The shape is drawn in the editor.',
+    inherits: 'Body < Node',
   },
 ]

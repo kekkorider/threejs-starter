@@ -4,6 +4,7 @@ import { GEOMETRY_CATALOG, type GeometryType } from './geometry'
 import { isGroupRecord, type GroupRecord } from './groups'
 import { isSignalDefinition, isSignalLinkRecord, type SignalDefinition, type SignalLinkRecord } from './signals'
 import type { GridSettings, LightDefaults, NodeKind, SceneSettings, ShadowTypeName } from './state'
+import { isBodySettings, type BodySettings } from './physicsBody'
 import type { MaterialSide } from './tsl'
 
 /** Scene that opens when the project has no saved scene yet. */
@@ -56,6 +57,8 @@ export interface SceneNodeRecord {
   groups?: string[]
   /** Custom signals. Built-in signals are not stored. Older scene files omit it. */
   signals?: SignalDefinition[]
+  /** Present on Body nodes. Older scene files omit it. */
+  body?: BodySettings | null
 }
 
 export const SCENE_DRAG_PREFIX = 'scene:'
@@ -114,6 +117,7 @@ const NODE_KINDS = new Set<NodeKind>([
   'OmniLight3D',
   'SpotLight3D',
   'HemisphereLight3D',
+  'Body',
 ])
 
 const GEOMETRY_TYPES = new Set<GeometryType>(GEOMETRY_CATALOG.map((entry) => entry.type))
@@ -291,6 +295,7 @@ function isNodeRecord(value: unknown): value is SceneNodeRecord {
     && (record.instance == null || (typeof record.instance === 'string' && record.instance.startsWith('res://')))
     && (record.groups === undefined || (Array.isArray(record.groups) && record.groups.every((name) => typeof name === 'string')))
     && (record.signals === undefined || (Array.isArray(record.signals) && record.signals.every(isSignalDefinition)))
+    && (record.body == null || isBodySettings(record.body))
 }
 
 function isComponentRecord(value: unknown): value is SceneComponentRecord {

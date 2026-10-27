@@ -2,7 +2,7 @@ import { Vector3, Quaternion, Mesh } from 'three/webgpu'
 import { Object3DBehaviour } from 'three-start'
 import { MotionType, rigidBody } from 'crashcat'
 
-import type { RigidBody, Shape, World, RigidBodySettings } from 'crashcat'
+import type { RigidBody, Shape, RigidBodySettings } from 'crashcat'
 
 type Params = {
   motionType?: number
@@ -35,7 +35,8 @@ export class Body extends Object3DBehaviour {
   }
 
   onDestroy() {
-    rigidBody.remove(this.ctx.modules.physics.world as World, this.body as RigidBody)
+    const world = this.ctx.modules.physics?.world
+    if (world && this.body) rigidBody.remove(world, this.body)
 
     if (this.object instanceof Mesh) {
       const { geometry } = this.object
@@ -73,10 +74,13 @@ export class Body extends Object3DBehaviour {
   }
 
   createBody() {
+    const physics = this.ctx.modules.physics
+    if (!physics) return
+
     const {
       OBJECT_LAYER_NOT_MOVING,
       OBJECT_LAYER_MOVING
-    } = this.ctx.modules.physics
+    } = physics
 
     const objectLayer = this.motionType === MotionType.STATIC ?
                           OBJECT_LAYER_NOT_MOVING :
@@ -86,7 +90,7 @@ export class Body extends Object3DBehaviour {
     this.object.getWorldQuaternion(this.objectWorldQuaternion)
 
     this.body = rigidBody.create(
-      this.ctx.modules.physics.world as World,
+      physics.world,
         {
         ...this.settings,
         shape: this.shape,
@@ -101,11 +105,14 @@ export class Body extends Object3DBehaviour {
   createShape() {}
 
   private syncFromObject() {
+    const world = this.ctx.modules.physics?.world
+    if (!world || !this.body) return
+
     this.object.getWorldPosition(this.objectWorldPosition)
     this.object.getWorldQuaternion(this.objectWorldQuaternion)
 
     rigidBody.setTransform(
-      this.ctx.modules.physics.world as World,
+      world,
       this.body as RigidBody,
       this.objectWorldPosition.toArray(this.positionArray),
       this.objectWorldQuaternion.toArray(this.quaternionArray),

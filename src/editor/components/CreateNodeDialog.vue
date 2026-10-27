@@ -36,7 +36,7 @@ const draft = reactive({
   bottom: defaultCameraSettings().bottom,
 })
 const error = ref('')
-const groups = ['Node', 'Mesh', 'Camera', 'Light']
+const groups = ['Node', 'Mesh', 'Camera', 'Light', 'Physics']
 
 const entry = computed(() => NODE_TYPES.find((item) => item.kind === draft.kind) ?? NODE_TYPES[0]!)
 const specs = computed(() => geometryEntry(draft.geometryType).params)

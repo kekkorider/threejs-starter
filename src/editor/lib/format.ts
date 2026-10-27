@@ -13,6 +13,7 @@ export function kindIcon(kind: NodeKind): string {
   if (kind === 'HemisphereLight3D') return 'light-hemi'
   if (kind === 'Camera3D') return 'camera'
   if (kind === 'WorldEnvironment') return 'world'
+  if (kind === 'Body') return 'body'
   return 'node'
 }
 
@@ -21,5 +22,6 @@ export function kindClass(kind: NodeKind): string {
   if (kind === 'Node3D') return 'node'
   if (kind === 'Camera3D') return 'camera'
   if (kind === 'WorldEnvironment') return 'world'
+  if (kind === 'Body') return 'body'
   return 'light'
 }

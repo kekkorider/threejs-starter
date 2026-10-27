@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { kindClass, kindIcon } from '../lib/format'
 import { useEditorStore } from '../stores/editor'
+import BodySection from './inspector/BodySection.vue'
 import CameraSection from './inspector/CameraSection.vue'
 import ComponentSection from './inspector/ComponentSection.vue'
 import GeometrySection from './inspector/GeometrySection.vue'
@@ -56,6 +57,7 @@ function onName(event: Event): void {
           <button type="button" class="btn" @click="store.makeLocal(node.id)">Make Local</button>
         </div>
         <EnvironmentSection />
+        <BodySection />
         <GridSection />
         <TransformSection />
         <CameraSection />
