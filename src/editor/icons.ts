@@ -38,6 +38,7 @@ const PATHS: Record<string, string> = {
   material: `<path fill="currentColor" d="M8 1.8 13.4 5v6L8 14.2 2.6 11V5L8 1.8Z"/>`,
   meshfile: `<path d="M8 1.6 14 8 8 14.4 2 8 8 1.6Z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>`,
   world: `<circle cx="8" cy="8" r="5.4" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M2.8 8h10.4M8 2.6c1.6 1.6 2.4 3.4 2.4 5.4S9.6 11.8 8 13.4C6.4 11.8 5.6 10 5.6 8S6.4 4.2 8 2.6Z" fill="none" stroke="currentColor" stroke-width="1.2"/>`,
+  body: `<path d="M3.2 6.1 8 3.4l4.8 2.7v5.4L8 14.2l-4.8-2.7V6.1Z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M8 8.8v5.2M3.4 6.3 8 8.8l4.6-2.5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>`,
   local: `<path d="M3 13V3h2.2M3 13h10" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M8.2 8.6 12.4 4.4M12.4 4.4H9.4M12.4 4.4v3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>`,
   snap: `<path d="M3 8.2 6.2 11.4 13 4.2" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>`,
   chevron: `<path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>`,

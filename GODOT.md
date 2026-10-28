@@ -75,6 +75,15 @@ When a feature lands, move it from **Not yet** into **Already in place**. Do not
 - Directional shadow coverage is wide enough for the floor. Spot and point lights cast shadows.
 - Point and spot energy stays bright out to Range instead of falling off with inverse-square decay.
 
+### Simulation
+
+- Project → Physics opens the Physics panel. Enable turns the physics module on or off. The open scene is saved, then the page reloads. While physics is off, `src/webgl/index.ts` does not import `PhysicsModule`.
+- The panel edits every crashcat world setting: gravity, contacts, continuous collision detection, narrowphase, solver, and sleeping. It also edits the two collision pairs, Moving / Not Moving and Moving / Moving. Changing a pair saves the scene and reloads, because those layers are fixed when the world is created.
+- Turning physics off lists every object that has a physics body and asks before it reloads. Opening the editor with physics already off shows the same list. The objects stay in the scene and do not simulate.
+- Create Node → Body adds a physics body. It is the root of that element: it can sit on World or a Node, and a mesh can be dragged under it. It cannot be dropped onto a mesh or onto another body.
+- The inspector sets motion type (Static, Kinematic, Dynamic), the collision shape (Box, Sphere, Triangle Mesh, Convex Hull), and the rigid-body fields crashcat stores on a body. Static uses the Not Moving layer. The others use Moving. Triangle mesh and convex hull read a child mesh. The shape is drawn in the editor and hides while playing.
+- Play steps the world. Stop removes the simulated bodies, puts each body back to the transform it had in the editor, and leaves the nodes. Pause still sets the timescale to 0.
+
 ### Components
 
 - Components are three-start behaviors (`Object3DBehaviour`) stored as TypeScript files under `res://components`.
@@ -126,10 +135,6 @@ Build these in an order that keeps the editor usable. A half-wired Godot feature
 
 - Property groups that match Godot sections more closely, including resource slots you can drag from the File system.
 - Keying a property for animation, once an animation player exists.
-
-### Simulation
-
-- Physics bodies are still available in `src/webgl/behaviors/physics`, but the starter scene no longer places any. A collision shape on a node, edited from the inspector, is the Godot-shaped version of that.
 
 ## Conventions
 

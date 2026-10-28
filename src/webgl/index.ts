@@ -19,9 +19,9 @@ import {
 } from "three-start"
 import { AssetLoaderModule } from './modules/AssetLoader'
 import { OrbitControlsModule } from './modules/OrbitControls'
-import { PhysicsModule } from './modules/Physics'
 import { InspectorModule } from './modules/Inspector'
 import { InputModule } from './modules/Input'
+import { physicsEnabled, readPhysicsState } from '../editor/physicsSettings'
 
 import { ScaleMaterial } from './materials/scale'
 import { Spin } from './behaviors/Spin'
@@ -39,7 +39,6 @@ export const starter = new ThreeStart()
 starter.addModules({
   assetLoader: new AssetLoaderModule(),
   orbitControls: new OrbitControlsModule(),
-  physics: new PhysicsModule(true),
   inspector: new InspectorModule(),
   input: new InputModule(),
 })
@@ -82,8 +81,11 @@ function remountScene(container: HTMLDivElement): void {
 }
 
 async function bootOnce(container: HTMLDivElement): Promise<void> {
+if (physicsEnabled()) {
+  const { PhysicsModule } = await import('./modules/Physics')
+  starter.addModules({ physics: new PhysicsModule(readPhysicsState().world) })
+}
 starter.start()
-starter.ctx.modules.physics.debugState?.object3d && (starter.ctx.modules.physics.debugState.object3d.userData.editorHidden = true)
 starter.ctx.once(ThreeContextEvents.Mount, () => {
   createPostProcessing()
 })

@@ -23,6 +23,14 @@ import { EditorHistory, sameScene, type HistoryRow, type SelectionBookmark } fro
 import { hasSceneFile, normalizeScenePath, readSceneLibrary, sceneFileName, type SceneFile } from '../sceneFile'
 import { DEFAULT_FLAGS, TSL_PRESETS, matchingPresetId, type MaterialSide } from '../tsl'
 import { setViewportShading } from '../../webgl'
+import {
+  copyPhysicsState,
+  readPhysicsState,
+  writePhysicsState,
+  type PhysicsState,
+  type PhysicsWorldSettings,
+} from '../physicsSettings'
+import type { BodySettings } from '../physicsBody'
 
 export type ScreenName = '3d' | 'script' | 'game' | 'asset'
 
@@ -81,6 +89,17 @@ export interface ComponentWarning {
   uses: ComponentUse[]
 }
 
+export interface PhysicsBodyUse {
+  id: string
+  name: string
+  path: string
+}
+
+export interface PhysicsWarning {
+  mode: 'disable' | 'info'
+  uses: PhysicsBodyUse[]
+}
+
 export interface InspectorView {
   id: string
   name: string
@@ -121,6 +140,11 @@ export interface InspectorView {
   } | null
   camera: CameraInspector | null
   environment: EnvironmentView | null
+  body: {
+    settings: BodySettings
+    layer: string
+    meshes: { id: string, name: string }[]
+  } | null
 }
 
 export interface CreateDraft {
@@ -184,7 +208,9 @@ export const useEditorStore = defineStore('editor', () => {
   const inspectorFilter = ref('')
   const expanded = ref(new Set<string>())
   const collapsed = ref(new Set<string>())
-  const bottomTab = ref<'tsl' | 'output' | 'history'>('tsl')
+  const bottomTab = ref<'tsl' | 'output' | 'history' | 'physics'>('tsl')
+  const physics = ref<PhysicsState>(readPhysicsState())
+  const physicsWarning = ref<PhysicsWarning | null>(null)
   const nodeTab = ref<'signals' | 'groups'>('signals')
   const groupError = ref('')
   const signalError = ref('')
@@ -484,6 +510,7 @@ export const useEditorStore = defineStore('editor', () => {
       light,
       camera: engine.cameraInspector(node),
       environment: engine.environmentView(node),
+      body: engine.bodyInspector(node),
     }
   }
 
@@ -861,6 +888,7 @@ export const useEditorStore = defineStore('editor', () => {
         transformTick.value += 1
       })
       engine.setChromeVisible(true)
+      notePhysicsBodies()
     }
     ready.value = true
     touch(true)
@@ -1628,6 +1656,7 @@ export const useEditorStore = defineStore('editor', () => {
       clearHistory()
     }
     touch(true)
+    if (loaded) notePhysicsBodies()
     if (!loaded) bottomTab.value = 'output'
   }
 
@@ -1639,6 +1668,7 @@ export const useEditorStore = defineStore('editor', () => {
       clearHistory()
     }
     touch(true)
+    if (opened) notePhysicsBodies()
     if (!opened) bottomTab.value = 'output'
   }
 
@@ -2267,6 +2297,8 @@ export const useEditorStore = defineStore('editor', () => {
           })
         } else if (draft.kind === 'WorldEnvironment') {
           engine.createWorldEnvironment(parentId, draft.name)
+        } else if (draft.kind === 'Body') {
+          engine.createBody(parentId, draft.name)
         } else if (draft.kind === 'Camera3D') {
           engine.createCamera({
             name: draft.name,
@@ -2395,7 +2427,12 @@ export const useEditorStore = defineStore('editor', () => {
         { label: 'Focus Selection', shortcut: 'F', disabled: locked, action: () => engine.focusSelected() },
       ]
     }
-    if (name === 'Project') return [{ label: 'Project Settings', disabled: true, action: () => {} }]
+    if (name === 'Project') {
+      return [
+        { label: 'Physics', action: () => { bottomCollapsed.value = false; bottomTab.value = 'physics' } },
+        { label: 'Project Settings', disabled: true, action: () => {} },
+      ]
+    }
     if (name === 'Debug') {
       return [
         { label: engine.paused ? 'Resume Simulation' : 'Pause Simulation', action: () => togglePause() },
@@ -2650,6 +2687,85 @@ export const useEditorStore = defineStore('editor', () => {
 
   function closeSignalConnect(): void {
     signalConnect.value = null
+  }
+
+  function physicsUses(): PhysicsBodyUse[] {
+    return engine.physicsUsers().map((use) => ({
+      id: use.id,
+      name: use.name,
+      path: engine.nodes.has(use.id) ? nodePath(use.id) : use.name,
+    }))
+  }
+
+  function notePhysicsBodies(): void {
+    if (physics.value.enabled) return
+    if (physicsWarning.value?.mode === 'disable') return
+    const uses = physicsUses()
+    physicsWarning.value = uses.length > 0 ? { mode: 'info', uses } : null
+  }
+
+  function commitPhysicsEnabled(enabled: boolean): void {
+    const next = copyPhysicsState(physics.value)
+    next.enabled = enabled
+    physics.value = next
+    writePhysicsState(next)
+    reloadPhysics()
+  }
+
+  function setPhysicsEnabled(enabled: boolean): void {
+    if (enabled === physics.value.enabled) return
+    if (!enabled) {
+      const uses = physicsUses()
+      if (uses.length > 0) {
+        physicsWarning.value = { mode: 'disable', uses }
+        return
+      }
+    }
+    commitPhysicsEnabled(enabled)
+  }
+
+  function confirmPhysicsWarning(): void {
+    const warning = physicsWarning.value
+    physicsWarning.value = null
+    if (warning?.mode === 'disable') commitPhysicsEnabled(false)
+  }
+
+  function dismissPhysicsWarning(): void {
+    physicsWarning.value = null
+  }
+
+  function editPhysicsWorld(mutate: (world: PhysicsWorldSettings) => void): void {
+    const next = copyPhysicsState(physics.value)
+    mutate(next.world)
+    physics.value = next
+    writePhysicsState(next)
+    engine.applyPhysicsWorld(next.world)
+  }
+
+  function setPhysicsPair(key: 'movingNotMoving' | 'movingMoving', value: boolean): void {
+    const next = copyPhysicsState(physics.value)
+    next.world.pairs[key] = value
+    physics.value = next
+    writePhysicsState(next)
+    reloadPhysics()
+  }
+
+  /** Layers and the physics module are fixed at boot, so a change reloads. Save first so bodies survive. */
+  function reloadPhysics(): void {
+    if (!engine.saveOpenScene()) return
+    window.location.reload()
+  }
+
+  function editBody(id: string, label: string, mutate: (settings: BodySettings) => void): void {
+    record(`${label} ${nodeLabel(id)}`, () => {
+      engine.updateBody(id, mutate)
+    })
+  }
+
+  function resetBody(id: string, key: keyof BodySettings): void {
+    record(`Reset ${nodeLabel(id)}`, () => {
+      engine.resetBody(id, key)
+    })
   }
 
   function componentsOn(nodeId: string): { id: string, name: string }[] {
@@ -3062,6 +3178,15 @@ export const useEditorStore = defineStore('editor', () => {
     closeSignalConnect,
     componentsOn,
     componentMethodNames,
+    physics,
+    physicsWarning,
+    setPhysicsEnabled,
+    confirmPhysicsWarning,
+    dismissPhysicsWarning,
+    editPhysicsWorld,
+    setPhysicsPair,
+    editBody,
+    resetBody,
   }
 })
 

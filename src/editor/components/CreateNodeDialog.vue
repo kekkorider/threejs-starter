@@ -36,7 +36,7 @@ const draft = reactive({
   bottom: defaultCameraSettings().bottom,
 })
 const error = ref('')
-const groups = ['Node', 'Mesh', 'Camera', 'Light']
+const groups = ['Node', 'Mesh', 'Camera', 'Light', 'Physics']
 
 const entry = computed(() => NODE_TYPES.find((item) => item.kind === draft.kind) ?? NODE_TYPES[0]!)
 const specs = computed(() => geometryEntry(draft.geometryType).params)
@@ -220,7 +220,7 @@ function onBackdrop(event: PointerEvent): void {
             </div>
             <div class="hint">The inspector edits the rest of the lens after the camera is created.</div>
           </template>
-          <template v-else-if="draft.kind !== 'Node3D'">
+          <template v-else-if="draft.kind !== 'Node3D' && draft.kind !== 'Body'">
             <div class="prop">
               <div class="prop-label">Color</div>
               <input v-model="draft.color" type="color" />
