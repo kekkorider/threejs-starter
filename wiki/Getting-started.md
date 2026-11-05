@@ -20,11 +20,8 @@ The package manager is pnpm.
 
 ## Open the editor
 
-`http://localhost:5173/` shows the scene.
-`http://localhost:5173/editor` shows the editor.
-
-The scene page has a link to the editor.
-Use that link when you are already on `/`.
+`http://localhost:5173/` shows the editor.
+The page contains the `threejs-editor` element.
 
 ## First scene
 
@@ -52,7 +49,7 @@ Read [[Components]] before you rely on a reload.
 
 ## First edits
 
-1. Open `/editor`.
+1. Open `http://localhost:5173`.
 2. Press `Ctrl+A` or `Cmd+A` to create a node.
 3. Choose MeshInstance.
 4. Press `W` and drag the gizmo.
