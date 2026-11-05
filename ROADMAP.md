@@ -301,7 +301,7 @@ These were considered and rejected. A session does not add them while doing an i
 
 **Steps.**
 
-1. A single overlay element, `pointer-events: none`, positioned over `#app`. Children that are buttons (mute) set `pointer-events: auto` on themselves.
+1. A single overlay element, `pointer-events: none`, positioned over `threejs-editor`. Children that are buttons (mute) set `pointer-events: auto` on themselves.
 2. `HudModule` exposes `setStatus(text)`, `setPrompt(text)`, and `setMuted(on)` so phase 11 can drive it without querying the DOM.
 3. Show a status line and a mute control. Mute calls `modules.audio.setMuted` when phase 7 is present. If audio is not loaded yet, the control still toggles local state and calls audio when the module exists.
 4. Fade the overlay with GSAP when `setVisible` changes.

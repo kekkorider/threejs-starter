@@ -39,153 +39,158 @@ import {
   BodyConvexHull
 } from './behaviors/physics'
 
-//
-// Setup
-//
-const starter = new ThreeStart()
+export async function runEditor(container: HTMLDivElement): Promise<ThreeStart> {
+  const starter = new ThreeStart()
 
-starter.addModules({
-  assetLoader: new AssetLoaderModule(),
-  orbitControls: new OrbitControlsModule(),
-  physics: new PhysicsModule(true),
-  inspector: new InspectorModule(),
-  input: new InputModule(),
-})
+  function createPostProcessing(): void {
+    const { scenePass, renderPipeline } = starter.ctx
 
-const { scene, renderer, camera, modules, scenePass, renderPipeline } = starter.ctx
+    scenePass.setMRT(
+      mrt({
+        output,
+        velocity,
+        normal: packNormalToRGB(normalView)
+      })
+    )
 
-starter.start()
-starter.ctx.once(ThreeContextEvents.Mount, () => {
-  createPostProcessing()
-})
+    const scenePassColor = scenePass.getTextureNode('output').toInspector('Output')
+    const scenePassDepth = scenePass.getTextureNode('depth').toInspector('Depth', () => scenePass.getLinearDepthNode())
+    const scenePassNormal = scenePass.getTextureNode('normal').toInspector('Normal')
+    const scenePassVelocity = scenePass.getTextureNode('velocity').toInspector('Velocity')
 
-starter.mount(document.getElementById('app')! as HTMLDivElement)
+    const outputNode = Fn(() => {
+      const top = mix(scenePassColor.renderOutput(), scenePassDepth.step(1), step(0.5, screenUV.x))
+      const bottom = mix(scenePassNormal, scenePassVelocity, step(0.5, screenUV.x))
+      const out = mix(top, bottom, step(0.5, screenUV.y))
 
-await renderer.init()
-
-modules.assetLoader.createKTX2Loader()
-
-await modules.assetLoader.loadTextures(['/diamond-07.png', '/m.png'], { colorSpace: THREE.SRGBColorSpace })
-await modules.assetLoader.loadModels('/suzanne.glb')
-await modules.assetLoader.loadKTX('/2d_etc1s.ktx2', {
-  flipY: false,
-  colorSpace: THREE.SRGBColorSpace,
-})
-
-//
-// Camera
-//
-camera.position.z = 5
-
-//
-// Spinning cube
-//
-const cube = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), ScaleMaterial)
-addComponent(cube, Spin, { axis: 'y', speed: 1 })
-addComponent(cube, Spin, { axis: 'z', speed: 0.87 })
-addComponent(cube, TransformControl)
-cube.position.set(-1.5, 0.5, 0)
-scene.add(cube)
-
-//
-// Floor
-//
-const floor = new THREE.Mesh(new THREE.BoxGeometry(10, 0.5, 10), NormalMaterial)
-floor.position.y = -2
-
-addComponent(floor, BodyBox, {
-  motionType: MotionType.STATIC,
-} as RigidBodySettings, {
-  width: 10.2,
-  height: 0.52,
-  depth: 10.2
-} as BodyBoxParams)
-
-scene.add(floor)
-
-//
-// Suzanne GLB model
-//
-const suzanne = modules.assetLoader.getModel('suzanne')!.scene.getObjectByName('Suzanne') as THREE.Mesh
-suzanne.position.x = 1.5
-suzanne.geometry.scale(1.3, 1.3, 1.3)
-MatcapMaterial.matcap = modules.assetLoader.getTexture('m')!
-suzanne.material = MatcapMaterial
-addComponent(suzanne, BodyConvexHull, {
-  mass: 1,
-  motionType: MotionType.DYNAMIC,
-  restitution: 0.65,
-  friction: 0.3
-} as RigidBodySettings)
-scene.add(suzanne)
-
-//
-// Physics cube
-//
-const physicsCubeMaterial = new THREE.MeshBasicNodeMaterial({
-  map: modules.assetLoader.getKTX('2d_etc1s')
-})
-
-console.log(physicsCubeMaterial.map)
-const physicsCube = new THREE.Mesh(new THREE.BoxGeometry(0.75, 1, 1), physicsCubeMaterial)
-physicsCube.position.x = -1.5
-physicsCube.position.y = 1.3
-physicsCube.position.z = -1
-physicsCube.rotation.z = Math.PI * Math.random()
-physicsCube.rotation.x = Math.PI * Math.random()
-
-addComponent(physicsCube, BodyBox, {
-  motionType: MotionType.DYNAMIC,
-  restitution: 0.6,
-  friction: 0,
-  mass: 1
-} as RigidBodySettings, {
-  width: 1,
-  height: 1,
-  depth: 1
-} as BodyBoxParams)
-scene.add(physicsCube)
-
-//
-// Physics sphere
-//
-const physicsSphere = new THREE.Mesh(new THREE.SphereGeometry(0.5), NormalMaterial)
-physicsSphere.position.x = 1
-physicsSphere.position.y = 2
-physicsSphere.position.z = -2.5
-
-addComponent(physicsSphere, BodySphere, {
-  motionType: MotionType.DYNAMIC,
-  restitution: .8
-} as RigidBodySettings, {
-    radius: 0.55
-} as BodySphereParams)
-scene.add(physicsSphere)
-
-//
-// Post-processing and Inspector
-//
-function createPostProcessing(): void {
-  scenePass.setMRT(
-    mrt({
-      output,
-      velocity,
-      normal: packNormalToRGB(normalView)
+      return out
     })
-  )
 
-  const scenePassColor = scenePass.getTextureNode('output').toInspector('Output')
-  const scenePassDepth = scenePass.getTextureNode('depth').toInspector('Depth', () => scenePass.getLinearDepthNode())
-  const scenePassNormal = scenePass.getTextureNode('normal').toInspector('Normal')
-  const scenePassVelocity = scenePass.getTextureNode('velocity').toInspector('Velocity')
+    renderPipeline.outputNode = outputNode()
+  }
 
-  const outputNode = Fn(() => {
-    const top = mix(scenePassColor.renderOutput(), scenePassDepth.step(1), step(0.5, screenUV.x))
-    const bottom = mix(scenePassNormal, scenePassVelocity, step(0.5, screenUV.x))
-    const out = mix(top, bottom, step(0.5, screenUV.y))
+  try {
+    starter.addModules({
+      assetLoader: new AssetLoaderModule(),
+      orbitControls: new OrbitControlsModule(),
+      physics: new PhysicsModule(true),
+      inspector: new InspectorModule(),
+      input: new InputModule(),
+    })
 
-    return out
-  })
+    const { scene, renderer, camera, modules } = starter.ctx
 
-  renderPipeline.outputNode = outputNode()
+    starter.start()
+    starter.ctx.once(ThreeContextEvents.Mount, () => {
+      createPostProcessing()
+    })
+
+    starter.mount(container)
+
+    await renderer.init()
+
+    modules.assetLoader.createKTX2Loader()
+
+    await modules.assetLoader.loadTextures(['/diamond-07.png', '/m.png'], { colorSpace: THREE.SRGBColorSpace })
+    await modules.assetLoader.loadModels('/suzanne.glb')
+    await modules.assetLoader.loadKTX('/2d_etc1s.ktx2', {
+      flipY: false,
+      colorSpace: THREE.SRGBColorSpace,
+    })
+
+    //
+    // Camera
+    //
+    camera.position.z = 5
+
+    //
+    // Spinning cube
+    //
+    const cube = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), ScaleMaterial)
+    addComponent(cube, Spin, { axis: 'y', speed: 1 })
+    addComponent(cube, Spin, { axis: 'z', speed: 0.87 })
+    addComponent(cube, TransformControl)
+    cube.position.set(-1.5, 0.5, 0)
+    scene.add(cube)
+
+    //
+    // Floor
+    //
+    const floor = new THREE.Mesh(new THREE.BoxGeometry(10, 0.5, 10), NormalMaterial)
+    floor.position.y = -2
+
+    addComponent(floor, BodyBox, {
+      motionType: MotionType.STATIC,
+    } as RigidBodySettings, {
+      width: 10.2,
+      height: 0.52,
+      depth: 10.2
+    } as BodyBoxParams)
+
+    scene.add(floor)
+
+    //
+    // Suzanne GLB model
+    //
+    const suzanne = modules.assetLoader.getModel('suzanne')!.scene.getObjectByName('Suzanne') as THREE.Mesh
+    suzanne.position.x = 1.5
+    suzanne.geometry.scale(1.3, 1.3, 1.3)
+    MatcapMaterial.matcap = modules.assetLoader.getTexture('m')!
+    suzanne.material = MatcapMaterial
+    addComponent(suzanne, BodyConvexHull, {
+      mass: 1,
+      motionType: MotionType.DYNAMIC,
+      restitution: 0.65,
+      friction: 0.3
+    } as RigidBodySettings)
+    scene.add(suzanne)
+
+    //
+    // Physics cube
+    //
+    const physicsCubeMaterial = new THREE.MeshBasicNodeMaterial({
+      map: modules.assetLoader.getKTX('2d_etc1s')
+    })
+
+    console.log(physicsCubeMaterial.map)
+    const physicsCube = new THREE.Mesh(new THREE.BoxGeometry(0.75, 1, 1), physicsCubeMaterial)
+    physicsCube.position.x = -1.5
+    physicsCube.position.y = 1.3
+    physicsCube.position.z = -1
+    physicsCube.rotation.z = Math.PI * Math.random()
+    physicsCube.rotation.x = Math.PI * Math.random()
+
+    addComponent(physicsCube, BodyBox, {
+      motionType: MotionType.DYNAMIC,
+      restitution: 0.6,
+      friction: 0,
+      mass: 1
+    } as RigidBodySettings, {
+      width: 1,
+      height: 1,
+      depth: 1
+    } as BodyBoxParams)
+    scene.add(physicsCube)
+
+    //
+    // Physics sphere
+    //
+    const physicsSphere = new THREE.Mesh(new THREE.SphereGeometry(0.5), NormalMaterial)
+    physicsSphere.position.x = 1
+    physicsSphere.position.y = 2
+    physicsSphere.position.z = -2.5
+
+    addComponent(physicsSphere, BodySphere, {
+      motionType: MotionType.DYNAMIC,
+      restitution: .8
+    } as RigidBodySettings, {
+      radius: 0.55
+    } as BodySphereParams)
+    scene.add(physicsSphere)
+
+    return starter
+  } catch (error) {
+    starter.dispose()
+    throw error
+  }
 }
